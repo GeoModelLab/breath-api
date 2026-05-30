@@ -15,10 +15,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="MathNet.Numerics" Version="6.0.0-beta1" />
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="..\optimizer\optimizerSimplex.csproj" />
     <ProjectReference Include="..\source\source.csproj" />
   </ItemGroup>
