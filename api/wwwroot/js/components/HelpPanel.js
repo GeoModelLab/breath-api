@@ -207,7 +207,7 @@ window.HelpPanel = defineComponent({
               <span class="help-v">Multi-start Nelder-Mead Simplex (3 restarts, 200 iterations per run).</span>
             </div>
             <div class="help-tip">
-              BREATH paper: Sabbatini et al. (2005). Three model variants (Baseline, Pheno, Circadian) correspond to Table 3 of the original publication.
+              BREATH model: Bregaglio et al. (2026, under review). Three model variants (Baseline, Pheno, Circadian) correspond to Table 3 of the original publication.
             </div>
           </template>
 

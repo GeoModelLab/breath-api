@@ -34,6 +34,17 @@ namespace BreathApi.Utils
             Status          = SimulationState.Failed;
             LastRunFinished = DateTime.UtcNow;
         }
+
+        // ── Cancellation support ──────────────────────────────────────────
+        private static CancellationTokenSource _cts = new();
+        public static CancellationToken CancelToken => _cts.Token;
+        public static void RequestStop()
+        {
+            _cts.Cancel();
+            _cts = new CancellationTokenSource(); // ready for next run
+            SetFailed();
+            Log("[STOP] Simulation stopped by user.");
+        }
         // ─────────────────────────────────────────────────────────────────
 
         public static void Log(string message)

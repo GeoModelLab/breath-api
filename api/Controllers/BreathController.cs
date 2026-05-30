@@ -80,6 +80,16 @@ namespace BreathApi.Controllers
             }
         }
 
+        // POST /api/breath/stop
+        [HttpPost("stop")]
+        public IActionResult Stop()
+        {
+            if (LogStreamer.Status != BreathApi.Utils.SimulationState.Running)
+                return Ok(new { Status = "NotRunning" });
+            LogStreamer.RequestStop();
+            return Ok(new { Status = "Stopped" });
+        }
+
         // GET /api/breath/status
         [HttpGet("status")]
         public IActionResult GetStatus()

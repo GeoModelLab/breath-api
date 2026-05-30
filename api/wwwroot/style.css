@@ -103,6 +103,14 @@ h2 {
 .nav-link { font-size: 11px; color: #64748b; text-decoration: none; }
 .nav-link:hover { color: #e2e8f0; }
 
+/* Log strip in topbar */
+.topbar-log { max-width: 320px; min-width: 160px; border-radius: 5px; }
+.topbar-log .log-status { background: #0d1117; border-color: #1a2640; padding: 3px 8px; min-height: 24px; }
+
+/* Stop button */
+.btn-stop { background: #7f1d1d; color: #fca5a5; border: 1px solid #991b1b; }
+.btn-stop:hover { background: #991b1b; color: #fff; }
+
 /* ══════════════════════════════════════════════════════════
    WORKSPACE  (flex row, fills remaining height)
 ══════════════════════════════════════════════════════════ */
@@ -230,7 +238,7 @@ h2 {
 /* ══════════════════════════════════════════════════════════
    PER-YEAR KPI TABLE
 ══════════════════════════════════════════════════════════ */
-.year-table-wrap {
+.year-table-wrap, .pheno-table-wrap {
   margin-bottom: 12px; overflow-x: auto;
 }
 .year-table {

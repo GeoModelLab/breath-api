@@ -3,7 +3,8 @@ const { defineComponent, nextTick } = Vue
 
 // ── helpers ──────────────────────────────────────────────────
 function mean(arr) { return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0 }
-const EXCLUDE_COLS = new Set(['year','doy','hour','date','pixel'])
+const EXCLUDE_COLS  = new Set(['year','hour','date','pixel'])
+const STRING_COLS   = new Set(['phenophase','phenoPhase'])
 // TleafOver/TleafUnder duplicate air temperature — hide from UI panel
 const HIDDEN_VARS  = new Set(['tleafover','tleafunder'])
 const MAX_HOURLY   = 365 * 24   // up to 1 full year of hourly data
@@ -49,6 +50,24 @@ function varColor(name) {
   if (/et0/.test(n))                                        return '#67e8f9'
   return '#64748b'
 }
+
+// ── variable units ───────────────────────────────────────
+const VAR_UNITS = {
+  gpp:'µmol m⁻² s⁻¹', gppover:'µmol m⁻² s⁻¹', gppunder:'µmol m⁻² s⁻¹',
+  reco:'µmol m⁻² s⁻¹', recoover:'µmol m⁻² s⁻¹', recounder:'µmol m⁻² s⁻¹',
+  recohetero:'µmol m⁻² s⁻¹', recotandws:'µmol m⁻² s⁻¹', recogpp:'µmol m⁻² s⁻¹',
+  nee:'µmol m⁻² s⁻¹',
+  swell:'EVI', reference:'EVI', vegetationcover:'-',
+  t:'°C', soilt:'°C', tleafover:'°C', tleafunder:'°C',
+  sw:'W m⁻²', p:'mm h⁻¹', rh:'%', vpd:'kPa', et0:'mm h⁻¹',
+  tscale:'0–1', tscaleover:'0–1', tscaleunder:'0–1', tscalereco:'0–1',
+  parscale:'0–1', parscaleover:'0–1', parscaleunder:'0–1',
+  waterstress:'0–1', vpdscale:'0–1',
+  phenologyscale:'0–1', phenoscale:'0–1', phenoreco:'0–1',
+  laiover:'m² m⁻²', laiunder:'m² m⁻²', lai:'m² m⁻²',
+  eviover:'EVI', eviunder:'EVI',
+}
+function varUnit(name) { return VAR_UNITS[name.toLowerCase()] ?? '' }
 
 // ── chart assignment ─────────────────────────────────────────
 const IS_FLUX    = n => /^(gpp|reco|nee|gppover|gppunder|recoover|recounder|recohetero|trecoref|recotandws|recogpp)$/i.test(n)
@@ -172,6 +191,35 @@ window.ResultsPanel = defineComponent({
                 <td colspan="4">All values gC m⁻² yr⁻¹</td>
                 <td></td>
               </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <!-- ── Phenological metrics ── -->
+        <div v-if="phenoMetrics.length" class="pheno-table-wrap">
+          <table class="year-table">
+            <thead>
+              <tr>
+                <th>Year</th>
+                <th title="Start of Growing Season — first day phenoCode=Growth">SGS</th>
+                <th title="Maturity — first day phenoCode=Greendown">MAT</th>
+                <th title="Start of Senescence">SEN</th>
+                <th title="End of Growing Season — return to Dormancy">EGS</th>
+                <th title="Growing Season Length (EGS−SGS)">GSL</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="m in phenoMetrics" :key="m.year">
+                <td class="yr-year">{{ m.year }}</td>
+                <td>{{ m.sgs ?? '—' }}</td>
+                <td>{{ m.mat ?? '—' }}</td>
+                <td>{{ m.sen ?? '—' }}</td>
+                <td>{{ m.egs ?? '—' }}</td>
+                <td>{{ m.gsl ?? '—' }}</td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr class="yr-unit"><td colspan="6">DOY (day of year) · GSL in days</td></tr>
             </tfoot>
           </table>
         </div>
@@ -356,6 +404,32 @@ window.ResultsPanel = defineComponent({
       return makeGroups(cols, FLUX_GROUPS)
     },
 
+    // ── Phenological metrics (per year, from hourly rows) ──────────────
+    phenoMetrics() {
+      const byYear = {}
+      for (const r of this.hourly) {
+        const yr = r.date?.slice(0,4); if (!yr) continue
+        if (!byYear[yr]) byYear[yr] = { sgs:null, mat:null, sen:null, egs:null, prevPhase:null }
+        const m = byYear[yr]
+        const phase = r.phenoPhase ?? r.phenophase ?? r.PhenoPhase ?? ''
+        const doy   = r.doy ?? null
+        if (doy == null) continue
+        const isGrowth  = /growth/i.test(phase)
+        const isGreendown = /green/i.test(phase)
+        const isSen     = /senesci|declin/i.test(phase)
+        const isDorm    = /dorm|induct/i.test(phase)
+        if (m.sgs == null && isGrowth)                              m.sgs = doy
+        if (m.mat == null && isGreendown && m.sgs != null)          m.mat = doy
+        if (m.sen == null && isSen && m.mat != null)                m.sen = doy
+        if (m.egs == null && isDorm && m.sen != null)               m.egs = doy
+      }
+      return Object.entries(byYear).sort(([a],[b])=>a<b?-1:1)
+        .map(([yr, m]) => ({
+          year: yr, sgs: m.sgs, mat: m.mat, sen: m.sen, egs: m.egs,
+          gsl: (m.sgs && m.egs) ? m.egs - m.sgs : null,
+        }))
+    },
+
     // Per-year annual totals from the FULL daily series (ignores date filter)
     yearlyStats() {
       const byYear = {}
@@ -524,7 +598,10 @@ window.ResultsPanel = defineComponent({
             tooltip: {
               backgroundColor:'#182030', titleColor:'#7080a0', bodyColor:'#c8d8e8',
               borderColor:'#243050', borderWidth:1,
-              callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.raw?.toFixed(4)}` },
+              callbacks: { label: ctx => {
+                const u = varUnit(ctx.dataset.label)
+                return ` ${ctx.dataset.label}: ${ctx.raw?.toFixed(3)}${u ? ' ' + u : ''}`
+              }},
             },
             ...this._zoomPlugin(),
           },
@@ -564,7 +641,10 @@ window.ResultsPanel = defineComponent({
             tooltip: {
               backgroundColor:'#182030', titleColor:'#7080a0', bodyColor:'#c8d8e8',
               borderColor:'#243050', borderWidth:1,
-              callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.raw?.toFixed(4)} µmol m⁻² s⁻¹` },
+              callbacks: { label: ctx => {
+                const u = varUnit(ctx.dataset.label)
+                return ` ${ctx.dataset.label}: ${ctx.raw?.toFixed(3)}${u ? ' ' + u : ''}`
+              }},
             },
             ...this._zoomPlugin(),
           },
@@ -604,6 +684,11 @@ window.ResultsPanel = defineComponent({
         }
         hdr.forEach((col,i) => {
           if (EXCLUDE_COLS.has(col)) return
+          if (STRING_COLS.has(col) || col.toLowerCase() === 'phenophase') {
+            row[col] = c[i]?.trim(); return
+          }
+          // doy as integer
+          if (col === 'doy') { const n = parseInt(c[i]); if (!isNaN(n)) row[col] = n; return }
           const v = parseFloat(c[i])
           if (!isNaN(v)) row[col] = v
         })

@@ -150,7 +150,7 @@ window.MapPanel = defineComponent({
   },
 
   mounted() {
-    this.map = L.map('leaflet-map', { center: [47, 10], zoom: 4 })
+    this.map = L.map('leaflet-map', { center: [47, 12], zoom: 5 })
     L.tileLayer(DARK_TILE, { attribution: DARK_ATTR, maxZoom: 19 }).addTo(this.map)
 
     this.forestLayer = L.tileLayer.wms(FOREST_WMS, {
@@ -198,6 +198,9 @@ window.MapPanel = defineComponent({
     // ESC cancels draw mode
     this._kbHandler = e => { if (e.key === 'Escape') this.cancelDraw() }
     document.addEventListener('keydown', this._kbHandler)
+
+    // Default: highlight TreeCover (class 10)
+    this.$nextTick(() => this.toggleSpotlight(10))
   },
 
   beforeUnmount() {

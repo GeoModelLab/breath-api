@@ -22,10 +22,19 @@ createApp({
         </div>
 
         <div class="topbar-right">
+          <!-- Log strip — always visible -->
+          <LogPanel ref="log" class="topbar-log" />
+
           <!-- Back to results when user went to map but results still exist -->
           <button v-if="appState === 'selecting' && lastCsvText"
                   class="btn-outline btn-sm" @click="restoreResults">
             📊 Back to results
+          </button>
+
+          <!-- Stop simulation -->
+          <button v-if="status === 'Running'"
+                  class="btn-stop btn-sm" @click="onStop" title="Stop simulation">
+            ⏹ Stop
           </button>
 
           <span v-if="status !== 'Running'" :class="['badge', badgeClass]">{{ statusLabel }}</span>
@@ -48,7 +57,7 @@ createApp({
           <MapPanel ref="mapPanel" @point-selected="onPoint" @area-selected="onAreaSelected" />
         </div>
 
-        <!-- Side column: run controls + log (hidden in completed) -->
+        <!-- Side column: run controls (hidden in completed) -->
         <div class="side-col">
           <ControlPanel
             :point="point"
@@ -58,7 +67,6 @@ createApp({
             :selected-pixels="selectedPixels"
             @run="onRun"
           />
-          <LogPanel ref="log" />
           <div v-if="appState === 'selecting' && !point && !selectedPixels.length" class="map-hint">
             <strong>Click on the map</strong> to select a forest pixel,<br>
             or use <strong>⬚ Area</strong> to draw a multi-pixel grid.<br>
@@ -277,6 +285,19 @@ createApp({
           return { lat, lon, annGPP: toAnn(d.g), annNEE: toAnn(d.n) }
         }).filter(Boolean)
       } catch { return [] }
+    },
+
+    async onStop() {
+      try {
+        await fetch('/api/breath/stop', { method: 'POST' })
+        this.$refs.log?.append('⏹ Simulation stopped.')
+        this.status = 'Failed'
+        clearInterval(this._poll)
+        this._sse?.close()
+        if (this.appState !== 'completed') this.appState = 'selecting'
+      } catch(e) {
+        this.$refs.log?.append(`Stop error: ${e.message}`)
+      }
     },
 
     async onApply(paramValues) {
