@@ -1,0 +1,219 @@
+;(function() {
+const { defineComponent, ref } = Vue
+
+const TABS = [
+  { id:'start',   icon:'⚡', label:'Quick Start' },
+  { id:'map',     icon:'🗺', label:'Map' },
+  { id:'model',   icon:'🌿', label:'Model' },
+  { id:'results', icon:'📊', label:'Results' },
+  { id:'params',  icon:'⚙',  label:'Parameters' },
+  { id:'about',   icon:'ℹ',  label:'About' },
+]
+
+window.HelpPanel = defineComponent({
+  name: 'HelpPanel',
+  emits: ['close'],
+
+  setup() {
+    const tab = ref('start')
+    return { tab, TABS }
+  },
+
+  template: `
+    <div class="help-overlay" @click.self="$emit('close')">
+      <div class="help-panel">
+
+        <div class="help-header">
+          <span class="help-title">🌲 BREATH — User Guide</span>
+          <button class="help-close" @click="$emit('close')">✕</button>
+        </div>
+
+        <!-- Tab bar -->
+        <div class="help-tabs">
+          <button v-for="t in TABS" :key="t.id"
+                  :class="['help-tab-btn', tab===t.id && 'active']"
+                  @click="tab=t.id">
+            <span class="htab-icon">{{ t.icon }}</span>
+            <span class="htab-label">{{ t.label }}</span>
+          </button>
+        </div>
+
+        <div class="help-body">
+
+          <!-- ── Quick Start ── -->
+          <template v-if="tab==='start'">
+            <div class="help-steps">
+              <div class="help-step">
+                <span class="step-num">1</span>
+                <div>
+                  <b>Click on the map</b> to select a deciduous forest pixel.<br>
+                  <span class="step-note">The ESA WorldCover overlay highlights forest cover (class 10, dark green).</span>
+                </div>
+              </div>
+              <div class="help-step">
+                <span class="step-num">2</span>
+                <div>
+                  <b>Choose a model variant</b> in the control panel:<br>
+                  <span class="step-note">Baseline (no phenology) · Pheno (SWELL active) · Circadian (SWELL + diurnal rhythm)</span>
+                </div>
+              </div>
+              <div class="help-step">
+                <span class="step-num">3</span>
+                <div>
+                  <b>Set the year range</b> (default 2018–2022) and click <b>▶ Run BREATH</b>.<br>
+                  <span class="step-note">Weather is downloaded from NASA POWER and cached — re-running the same location is fast.</span>
+                </div>
+              </div>
+              <div class="help-step">
+                <span class="step-num">4</span>
+                <div>
+                  <b>Explore results</b> in the two charts (SWELL + FLUXES).<br>
+                  <span class="step-note">Toggle variables on/off with the panel on the right. Ctrl+scroll to zoom the time axis.</span>
+                </div>
+              </div>
+              <div class="help-step">
+                <span class="step-num">5</span>
+                <div>
+                  <b>Adjust parameters</b> with the accordion at the bottom and re-run without re-downloading weather data.
+                </div>
+              </div>
+            </div>
+            <div class="help-tip">
+              💡 <b>Area simulation:</b> use the <b>⬚ Area</b> button on the map to draw a rectangle and run up to 25 grid pixels simultaneously. Results are shown as colored circles on the map.
+            </div>
+          </template>
+
+          <!-- ── Map ── -->
+          <template v-if="tab==='map'">
+            <p class="help-p">The map overlay uses <b>ESA WorldCover 2021</b> (10 m global land cover). BREATH is calibrated for <b>deciduous broadleaf forests (class 10, dark green)</b>.</p>
+            <div class="help-kv">
+              <span class="help-k">Single click</span>
+              <span class="help-v">Select one pixel for simulation. A marker and lat/lon coordinates appear.</span>
+              <span class="help-k">⬚ Area</span>
+              <span class="help-v">Click and drag to draw a bounding box. BREATH runs on a regular grid (up to 25 pixels). Results shown as circles scaled by NEE magnitude.</span>
+              <span class="help-k">Forest mask</span>
+              <span class="help-v">Toggle the WorldCover overlay on/off.</span>
+              <span class="help-k">▤ Legend</span>
+              <span class="help-v">Shows all 7 land-cover classes. Click a class to highlight it on the map (dims everything else).</span>
+              <span class="help-k">ESC</span>
+              <span class="help-v">Cancel area draw mode.</span>
+            </div>
+            <div class="help-tip">
+              ⚠️ The orange banner <i>"Point may not be in dense tree cover"</i> appears when the selected pixel is not classified as forest (class 10). The model will still run, but results may not be representative.
+            </div>
+          </template>
+
+          <!-- ── Model ── -->
+          <template v-if="tab==='model'">
+            <p class="help-p">BREATH (Biophysical Rhythm of Ecosystem Activity &amp; Health) models hourly carbon exchange using three nested components:</p>
+
+            <div class="help-model-variants">
+              <div class="hmv-card hmv-baseline">
+                <div class="hmv-title">Baseline</div>
+                <div class="hmv-desc">No phenology. Canopy LAI and light extinction are constant throughout the year. Photosynthesis is driven purely by weather (light, temperature, VPD, soil moisture).</div>
+              </div>
+              <div class="hmv-card hmv-pheno">
+                <div class="hmv-title">Pheno</div>
+                <div class="hmv-desc">SWELL phenological model is active. The canopy cycles through dormancy induction → endodormancy (chilling) → ecodormancy (forcing) → growth → greendown → senescence each year.</div>
+              </div>
+              <div class="hmv-card hmv-circadian">
+                <div class="hmv-title">Circadian</div>
+                <div class="hmv-desc">SWELL + a diurnal (circadian) rhythm that modulates stomatal conductance and quantum yield within each day, producing a realistic morning/afternoon GPP asymmetry.</div>
+              </div>
+            </div>
+
+            <p class="help-p" style="margin-top:12px"><b>SWELL phenology phases:</b></p>
+            <div class="help-kv">
+              <span class="help-k">Dormancy induction</span>
+              <span class="help-v">Short photoperiod + low temperature → photothermal units accumulate until threshold → leaf drop triggers.</span>
+              <span class="help-k">Endodormancy</span>
+              <span class="help-v">Deep dormancy. Chilling units accumulate between T<sub>lower</sub> and T<sub>upper</sub> (vernalisation).</span>
+              <span class="help-k">Ecodormancy</span>
+              <span class="help-v">Chilling satisfied. Heat forcing units accumulate until budburst threshold → spring growth begins.</span>
+              <span class="help-k">Growth</span>
+              <span class="help-v">Rapid leaf expansion. LAI grows from minimum to maximum, photosynthesis scales with phenologyScale.</span>
+              <span class="help-k">Greendown</span>
+              <span class="help-v">Canopy at peak. Thermal units continue accumulating until senescence is triggered.</span>
+              <span class="help-k">Senescence</span>
+              <span class="help-v">Autumn. LAI declines, SWELL value drops toward 0 as leaves fall.</span>
+            </div>
+          </template>
+
+          <!-- ── Results ── -->
+          <template v-if="tab==='results'">
+            <p class="help-p">The four <b>metric cards</b> at the top show annual averages (normalised across all simulated years):</p>
+            <div class="help-kv">
+              <span class="help-k">Annual NEE</span>
+              <span class="help-v">Net Ecosystem Exchange. NEE &lt; 0 = carbon sink (absorption). NEE &gt; 0 = carbon source.</span>
+              <span class="help-k">Annual GPP</span>
+              <span class="help-v">Gross Primary Production — total photosynthesis (overstory + understory).</span>
+              <span class="help-k">Annual RECO</span>
+              <span class="help-v">Ecosystem Respiration (autotrophic + heterotrophic).</span>
+              <span class="help-k">Peak GPP</span>
+              <span class="help-v">Maximum hourly GPP in the simulation period (µmol m⁻² s⁻¹).</span>
+            </div>
+
+            <p class="help-p" style="margin-top:10px"><b>Two-chart layout:</b></p>
+            <div class="help-kv">
+              <span class="help-k">SWELL chart</span>
+              <span class="help-v">Phenology, scalers and weather. Left axis: 0–1 (dimensionless). Right axis: weather units (°C, W/m², mm, …).</span>
+              <span class="help-k">FLUXES chart</span>
+              <span class="help-v">GPP, RECO, NEE and components. Left axis: µmol m⁻² s⁻¹.</span>
+              <span class="help-k">Toggle variables</span>
+              <span class="help-v">Click any variable in the right panel to add/remove it from the corresponding chart. The L/R badge shows which axis it uses.</span>
+              <span class="help-k">Ctrl + scroll</span>
+              <span class="help-v">Zoom the time axis. Both charts zoom/pan together. ⤢ to reset.</span>
+              <span class="help-k">From / To</span>
+              <span class="help-v">Date filter. Metric cards update to reflect the filtered period. ✕ to clear.</span>
+              <span class="help-k">⬇ CSV</span>
+              <span class="help-v">Download the full hourly CSV with all output variables.</span>
+            </div>
+          </template>
+
+          <!-- ── Parameters ── -->
+          <template v-if="tab==='params'">
+            <p class="help-p">The <b>Adjust Parameters &amp; Re-run</b> accordion below the charts lets you modify biophysical coefficients and re-simulate without re-downloading weather data.</p>
+            <div class="help-kv">
+              <span class="help-k">Phenology</span>
+              <span class="help-v">SWELL phase thresholds: photoperiod limits, chilling requirements, heat forcing, greendown, senescence.</span>
+              <span class="help-k">Photosynthesis</span>
+              <span class="help-v">Maximum quantum yield (over/understory), temperature optimum, VPD sensitivity, light saturation, water stress.</span>
+              <span class="help-k">Respiration</span>
+              <span class="help-v">Basal respiration, Q10 temperature sensitivity, GPP pool allocation, autotrophic / heterotrophic fractions.</span>
+              <span class="help-k">Vegetation Index</span>
+              <span class="help-v">NVI growth rates controlling simulated NDVI/EVI dynamics in each phenological phase.</span>
+            </div>
+            <div class="help-tip">
+              The slider sets the value between the calibration min and max. The numeric box to the right is directly editable. Parameters marked <b>x</b> in the CSV are included in MODIS EVI calibration.
+            </div>
+            <p class="help-p" style="margin-top:8px">Enable <b>Calibrate against MODIS EVI</b> in the control panel to automatically fit marked parameters to MODIS Terra/Aqua 16-day EVI composites from ORNL DAAC.</p>
+          </template>
+
+          <!-- ── About ── -->
+          <template v-if="tab==='about'">
+            <p class="help-p">
+              <b>BREATH</b> — Biophysical Rhythm of Ecosystem Activity &amp; Health<br>
+              A biophysical model for hourly simulation of GPP, RECO and NEE in temperate deciduous forests.
+            </p>
+            <p class="help-p">Based on VPRM (Mahadevan et al. 2008) with SWELL phenology (Delpierre et al. 2009 / Dufrêne-type).</p>
+            <div class="help-kv">
+              <span class="help-k">Weather</span>
+              <span class="help-v"><a href="https://power.larc.nasa.gov/" target="_blank" style="color:#3b82f6">NASA POWER</a> — hourly or daily, global coverage from 1981.</span>
+              <span class="help-k">Satellite VI</span>
+              <span class="help-v"><a href="https://modis.gsfc.nasa.gov/" target="_blank" style="color:#3b82f6">MODIS Terra/Aqua EVI</a> — 16-day composites from ORNL DAAC.</span>
+              <span class="help-k">Land cover</span>
+              <span class="help-v"><a href="https://esa-worldcover.org/" target="_blank" style="color:#3b82f6">ESA WorldCover 2021</a> — 10 m global map, 11 classes.</span>
+              <span class="help-k">Calibration</span>
+              <span class="help-v">Multi-start Nelder-Mead Simplex (3 restarts, 200 iterations per run).</span>
+            </div>
+            <div class="help-tip">
+              BREATH paper: Sabbatini et al. (2005). Three model variants (Baseline, Pheno, Circadian) correspond to Table 3 of the original publication.
+            </div>
+          </template>
+
+        </div>
+      </div>
+    </div>
+  `,
+})
+})()

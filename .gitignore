@@ -1,0 +1,50 @@
+# Build outputs
+**/bin/
+**/obj/
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.userprefs
+
+# Rider / JetBrains
+.idea/
+*.DotSettings.user
+
+# NuGet packages (restored on build)
+**/packages/
+**/.nuget/
+
+# Publish output
+**/publish/
+
+# Runtime simulation outputs (data, not code)
+api/wwwroot/output/
+api/cache/
+api/wwwroot/cache/
+core/runner/cache/
+
+# Temp config written at runtime
+**/BreathConfig.json
+*.tmp
+
+# R / Shiny
+webapp/.Rhistory
+webapp/.RData
+webapp/rsconnect/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Secrets / local overrides
+appsettings.Local.json
+appsettings.Development.json
+
+# Claude Code local session files
+.claude/settings.local.json
+.claude/*.jsonl

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "breath-api",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "api", "--urls", "http://localhost:53132"],
+      "port": 53132
+    }
+  ]
+}
