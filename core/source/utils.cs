@@ -422,7 +422,7 @@ namespace source.functions
         public static float estimateVegetationCover(output outputT1, output outputT, parameters parameters)
         {
             float vegetationCover = 0f;
-            float vi = outputT1.vi;
+            float vi = outputT1.vi / 100f;   // vi stored as EVI×100, params in EVI
 
             if (outputT1.phenoCode < 3)
             {

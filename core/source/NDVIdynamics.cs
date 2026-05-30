@@ -160,14 +160,14 @@ namespace source.functions
             outputT1.vi = output.vi + output.viRate;
 
 
-            //NDVI thresholds between minimum and maximumVI
-            if (outputT1.vi < parameters.parVegetationIndex.minimumVI)
+            //NDVI thresholds: vi is stored as EVI×100, params are in EVI units
+            if (outputT1.vi / 100 < parameters.parVegetationIndex.minimumVI)
             {
-                outputT1.vi = parameters.parVegetationIndex.minimumVI;
+                outputT1.vi = parameters.parVegetationIndex.minimumVI * 100;
             }
-            if (outputT1.vi > parameters.parVegetationIndex.maximumVI)
+            if (outputT1.vi / 100 > parameters.parVegetationIndex.maximumVI)
             {
-                outputT1.vi = parameters.parVegetationIndex.maximumVI;
+                outputT1.vi = parameters.parVegetationIndex.maximumVI * 100;
             }
 
         

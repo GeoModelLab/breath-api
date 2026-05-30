@@ -213,10 +213,10 @@ namespace runner
                 output  = new output();
                 outputT1 = new output();
 
-                // Initialise VI to minimum so understory LAI > 0 from day 1.
-                // Without this, vi=0 → LAIunderstory<0 → clamped to 0 → Iabs=0 → GPP=0.
-                output.vi   = parameters.parVegetationIndex.minimumVI;
-                outputT1.vi = parameters.parVegetationIndex.minimumVI;
+                // Initialise VI to minimum (×100 because vi is stored as EVI×100 internally).
+                // minimumVI in CSV is in EVI units; output/calibration use vi/100.
+                output.vi   = parameters.parVegetationIndex.minimumVI * 100;
+                outputT1.vi = parameters.parVegetationIndex.minimumVI * 100;
 
                 // Respiration state is initialized in exchanges.VPRM via fastPool/slowPool
 
