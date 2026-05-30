@@ -17,6 +17,12 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<!-- Exclude runtime-generated output from publish (created at startup on the server) -->
+		<Content Remove="wwwroot\output\**" />
+		<Content Remove="wwwroot\cache\**" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.5" />
 		<PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
 	</ItemGroup>

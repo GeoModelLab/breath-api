@@ -1,0 +1,31 @@
+# Build artifacts (huge, not needed in Docker context)
+**/bin/
+**/obj/
+**/out/
+
+# IDE and OS files
+.vs/
+.idea/
+*.user
+*.suo
+.DS_Store
+Thumbs.db
+
+# Runtime output (generated, not source)
+api/wwwroot/output/
+api/wwwroot/cache/
+api/cache/
+
+# Git and CI
+.git/
+.github/
+.claude/
+
+# Frontend build artifacts
+frontend/node_modules/
+frontend/dist/
+
+# Temp files
+*.tmp
+*.log
+**/BreathConfig.json
