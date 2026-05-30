@@ -148,47 +148,46 @@ namespace runner.data
                         inp.airTemperatureH[i]   = GetVal(data, "T2M",               timestamp);
                         inp.relativeHumidityH[i] = GetVal(data, "RH2M",              timestamp);
                         inp.precipitationH[i]    = GetVal(data, "PRECTOTCORR",       timestamp);
-                        inp.solarRadiationH[i]   = GetVal(data, "ALLSKY_SFC_SW_DWN", timestamp);
+
+                        // NASA POWER hourly gives W/m² — convert to MJ/m²/h (×3.6e-3)
+                        // so that the ×544 factor in exchanges.cs correctly yields µmol PAR/m²/s
+                        float radWm2 = GetVal(data, "ALLSKY_SFC_SW_DWN", timestamp);
+                        inp.solarRadiationH[i] = float.IsNaN(radWm2) ? 0f : radWm2 * 3.6e-3f;
 
                         tVals.Add(inp.airTemperatureH[i]);
                         rhVals.Add(inp.relativeHumidityH[i]);
-                        radVals.Add(inp.solarRadiationH[i]);
+                        radVals.Add(inp.solarRadiationH[i]);  // now in MJ/m²/h
                         precVals.Add(inp.precipitationH[i]);
 
                         i++;
                     }
 
-                    // Aggregate daily scalars from the hourly arrays
+                    // Aggregate daily scalars
                     inp.airTemperatureMaximum = tVals.Count > 0 ? tVals.Max() : float.NaN;
                     inp.airTemperatureMinimum = tVals.Count > 0 ? tVals.Min() : float.NaN;
-                    inp.solarRadiation        = radVals.Sum();
+                    inp.solarRadiation        = radVals.Sum();  // MJ/m²/day
                     inp.PAR                   = inp.solarRadiation * 0.45f;
-                    inp.precipitation         = precVals.Sum();
+                    inp.precipitation         = precVals.Sum(); // mm/day
 
-                    // Compute VPD and ET₀ for each filled hour
-                    // (NASA POWER hourly path does not include these — derive from T and RH)
+                    // Compute VPD for each hour (from T and RH)
                     for (int h = 0; h < i; h++)
                     {
                         float t  = inp.airTemperatureH[h];
                         float rh = inp.relativeHumidityH[h];
                         if (float.IsNaN(t) || float.IsNaN(rh)) continue;
 
-                        // Saturation vapour pressure (kPa) — Monteith & Unsworth 1990
                         float svp = 0.6108f * (float)Math.Exp(17.27f * t / (t + 237.3f));
                         float avp = svp * rh / 100f;
                         inp.vaporPressureDeficitH[h] = Math.Max(0f, svp - avp);
+                    }
 
-                        // ET₀ (polynomial regression from weatherReader)
-                        double Rs  = inp.PAR;
-                        double et0 = 0.1396
-                                     - 3.019e-3  * rh
-                                     - 1.2109e-3 * t
-                                     + 1.626e-5  * rh * rh
-                                     + 8.224e-5  * t  * t
-                                     + 0.1842    * Rs
-                                     + 0.5       * Rs * (-1.095e-3 * rh + 3.655e-3 * t)
-                                     - 4.442e-3  * Rs * Rs;
-                        inp.referenceET0H[h] = (float)Math.Max(0.0, et0);
+                    // Compute daily ET₀ via Hargreaves-Samani (needs ETR from dayLength)
+                    // This sets inp.referenceEvapotranspiration used by waterStressFunction
+                    if (!float.IsNaN(inp.airTemperatureMaximum) && !float.IsNaN(inp.airTemperatureMinimum))
+                    {
+                        var wr = new weatherReader();
+                        wr.dayLength(inp, inp.airTemperatureMaximum, inp.airTemperatureMinimum);
+                        // referenceEvapotranspiration is now set inside inp by dayLength()
                     }
 
                     results[date] = inp;
