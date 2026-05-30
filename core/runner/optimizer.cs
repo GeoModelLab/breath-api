@@ -385,7 +385,7 @@ namespace runner
                                 fmt(wd.solarRadiationH[hour]),
                                 fmt(wd.relativeHumidityH[hour]),
                                 fmt(wd.vaporPressureDeficitH[hour]),
-                                fmt(wd.referenceET0H[hour]),
+                                fmt(wd.referenceEvapotranspiration / 24f), // daily ET0 spread over 24h
 
                                 pheno,
                                 fmt(w.vi / 100),
