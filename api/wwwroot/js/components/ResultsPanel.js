@@ -406,22 +406,31 @@ window.ResultsPanel = defineComponent({
 
     // ── Phenological metrics (per year, from hourly rows) ──────────────
     phenoMetrics() {
+      // find phenoPhase column key (case-insensitive)
+      const phaseKey = this.hourly.length
+        ? Object.keys(this.hourly[0]).find(k => k.toLowerCase() === 'phenophase') ?? null
+        : null
+      if (!phaseKey) return []
+
+      const doyFromDate = dateStr => {
+        if (!dateStr) return null
+        const d = new Date(dateStr)
+        const start = new Date(d.getFullYear(), 0, 0)
+        return Math.floor((d - start) / 86400000)
+      }
+
       const byYear = {}
       for (const r of this.hourly) {
         const yr = r.date?.slice(0,4); if (!yr) continue
-        if (!byYear[yr]) byYear[yr] = { sgs:null, mat:null, sen:null, egs:null, prevPhase:null }
-        const m = byYear[yr]
-        const phase = r.phenoPhase ?? r.phenophase ?? r.PhenoPhase ?? ''
-        const doy   = r.doy ?? null
-        if (doy == null) continue
-        const isGrowth  = /growth/i.test(phase)
-        const isGreendown = /green/i.test(phase)
-        const isSen     = /senesci|declin/i.test(phase)
-        const isDorm    = /dorm|induct/i.test(phase)
-        if (m.sgs == null && isGrowth)                              m.sgs = doy
-        if (m.mat == null && isGreendown && m.sgs != null)          m.mat = doy
-        if (m.sen == null && isSen && m.mat != null)                m.sen = doy
-        if (m.egs == null && isDorm && m.sen != null)               m.egs = doy
+        if (!byYear[yr]) byYear[yr] = { sgs:null, mat:null, sen:null, egs:null }
+        const m     = byYear[yr]
+        const phase = (r[phaseKey] ?? '').toString()
+        const doy   = r.doy ?? doyFromDate(r.date)
+        if (!doy) continue
+        if (m.sgs == null && /growth/i.test(phase))                           m.sgs = doy
+        if (m.mat == null && /green/i.test(phase)   && m.sgs != null)         m.mat = doy
+        if (m.sen == null && /senesci|declin/i.test(phase) && m.mat != null)  m.sen = doy
+        if (m.egs == null && /dorm|induct/i.test(phase)    && m.sen != null)  m.egs = doy
       }
       return Object.entries(byYear).sort(([a],[b])=>a<b?-1:1)
         .map(([yr, m]) => ({
@@ -684,13 +693,13 @@ window.ResultsPanel = defineComponent({
         }
         hdr.forEach((col,i) => {
           if (EXCLUDE_COLS.has(col)) return
-          if (STRING_COLS.has(col) || col.toLowerCase() === 'phenophase') {
-            row[col] = c[i]?.trim(); return
+          const raw = c[i]?.trim() ?? ''
+          const v = parseFloat(raw)
+          if (!isNaN(v)) {
+            row[col] = (col === 'doy') ? Math.round(v) : v
+          } else if (raw) {
+            row[col] = raw   // store non-numeric (e.g. phenoPhase) as string
           }
-          // doy as integer
-          if (col === 'doy') { const n = parseInt(c[i]); if (!isNaN(n)) row[col] = n; return }
-          const v = parseFloat(c[i])
-          if (!isNaN(v)) row[col] = v
         })
         return row
       }).filter(r => r.date && r.date.length === 10)
