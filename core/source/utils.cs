@@ -577,8 +577,12 @@ namespace source.functions
 
         public static float PARGppfunction(output outputsT1, float par, float halfSaturationValue)
         {
-            float parScaleTree = 1 / (1 + (par / halfSaturationValue));
-
+            // Light attenuation scaler: 1 at dark, → 0 at saturating light.
+            // Combined with the PAR term in estimateGPP this gives Michaelis-Menten:
+            //   GPP ∝ PARscale × PAR = [1/(1+PAR/k)] × PAR = k·PAR/(PAR+k)
+            // par must be in µmol PAR m⁻² s⁻¹ and halfSaturationValue in the same units.
+            if (par <= 0f) return 0f;
+            float parScaleTree = 1f / (1f + (par / halfSaturationValue));
             return parScaleTree;
         }
 

@@ -208,7 +208,8 @@ namespace source.functions
 
                 #region VPD effect
                 //compute VPD effect
-                float VPDscale = utils.VPDfunction(input.vaporPressureDeficitH[h] / 10, parameters); 
+                // VPD is in kPa (computed by weatherReader); parameters vpdMin/vpdMax also in kPa
+                float VPDscale = utils.VPDfunction(input.vaporPressureDeficitH[h], parameters);
                 outputT1.exchanges.vpdScale.Add(VPDscale);
                 #endregion
 

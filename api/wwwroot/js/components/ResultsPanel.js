@@ -439,10 +439,12 @@ window.ResultsPanel = defineComponent({
         const phase = (r[phaseKey] ?? '').toString()
         const doy   = r.doy ?? doyFromDate(r.date)
         if (!doy) continue
-        if (m.sgs == null && /growth/i.test(phase))                           m.sgs = doy
-        if (m.mat == null && /green/i.test(phase)   && m.sgs != null)         m.mat = doy
+        if (m.sgs == null && /growth/i.test(phase))                             m.sgs = doy
+        if (m.mat == null && /green/i.test(phase)     && m.sgs != null)       m.mat = doy
+        // SEN: phenoCode 4→5 (Greendown→Senescence)
         if (m.sen == null && /senesci|declin/i.test(phase) && m.mat != null)  m.sen = doy
-        if (m.egs == null && /dorm|induct/i.test(phase)    && m.sen != null)  m.egs = doy
+        // EGS: return to dormancy after growing season (works even without senescence, e.g. Mediterranean)
+        if (m.egs == null && /dorm|induct/i.test(phase)    && m.mat != null)  m.egs = doy
       }
       return Object.entries(byYear).sort(([a],[b])=>a<b?-1:1)
         .map(([yr, m]) => ({
