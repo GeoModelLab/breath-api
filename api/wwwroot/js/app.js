@@ -18,7 +18,12 @@ createApp({
         <div class="topbar-meta" v-if="appState === 'completed' || (point && status === 'Running')">
           <span class="location-pill">📍 {{ locationLabel }}</span>
           <span class="period-pill">{{ periodLabel }}</span>
-          <span v-if="status === 'Running'" class="badge badge-running" style="margin-left:4px">Running…</span>
+        </div>
+
+        <!-- Single-line log strip — only during simulation -->
+        <div v-if="status === 'Running'" class="topbar-log-strip">
+          <span class="tls-dot"></span>
+          <span class="tls-text">{{ lastLog }}</span>
         </div>
 
         <div class="topbar-right">
@@ -55,10 +60,10 @@ createApp({
           <MapPanel ref="mapPanel" @point-selected="onPoint" @area-selected="onAreaSelected" />
         </div>
 
-        <!-- Side column: controls + log (narrow in completed = log only) -->
+        <!-- Side column: controls (v-show keeps lat/lon state for re-run) -->
         <div class="side-col">
           <ControlPanel
-            v-if="appState !== 'completed'"
+            v-show="appState !== 'completed'"
             :point="point"
             :status="status"
             :started-at="startedAt"
@@ -66,7 +71,7 @@ createApp({
             :selected-pixels="selectedPixels"
             @run="onRun"
           />
-          <LogPanel ref="log" />
+          <LogPanel ref="log" style="display:none" />
           <div v-if="appState === 'selecting' && !point && !selectedPixels.length" class="map-hint">
             <strong>Click on the map</strong> to select a forest pixel,<br>
             or use <strong>⬚ Area</strong> to draw a multi-pixel grid.<br>
@@ -111,15 +116,20 @@ createApp({
       appState:       'selecting',
       paramsOpen:     false,
       lastPayload:    null,
-      lastCsvText:    null,   // stores last successful CSV for "back to results"
+      lastCsvText:    null,
       helpOpen:       false,
-      selectedPixels: [],     // from area selection
+      selectedPixels: [],
+      _logLines:      [],     // shared log state for topbar strip
       _sse:           null,
       _poll:          null,
     }
   },
 
   computed: {
+    lastLog() {
+      const lines = this._logLines
+      return lines.length ? lines[lines.length-1] : ''
+    },
     badgeClass() {
       return { Idle:'badge-idle', Running:'badge-running',
                Completed:'badge-done', Failed:'badge-error' }[this.status] ?? 'badge-idle'
@@ -175,6 +185,7 @@ createApp({
       }
 
       this.lastPayload = payload
+      this._logLines = ['▶ Starting BREATH model…']
       this.$refs.log?.clear()
       this.$refs.log?.append('▶ Starting BREATH model…')
       if (this.selectedPixels.length > 1)
@@ -200,7 +211,7 @@ createApp({
       }
 
       this._sse = breathLogStream(
-        msg => this.$refs.log?.append(msg),
+        msg => { this.$refs.log?.append(msg); this._logLines.push(msg) },
         ()  => this.startPoll(),
       )
       this.startPoll()

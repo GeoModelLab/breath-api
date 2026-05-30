@@ -112,15 +112,23 @@ window.ControlPanel = defineComponent({
     return {
       lat:          null,
       lon:          null,
-      startYear:    2018,
-      endYear:      2022,
+      startYear:    2020,
+      endYear:      2025,
       inputWeather: 'hourly',
       calibration:  false,
-      modelVariant: 'Pheno',
+      modelVariant: 'Circadian',
       thisYear:     new Date().getFullYear(),
       elapsed:      0,
       _tick:        null,
       VARIANTS,
+    }
+  },
+
+  mounted() {
+    // Restore lat/lon when component is re-shown after "← New location"
+    if (this.point) {
+      this.lat = +this.point.lat.toFixed(5)
+      this.lon = +this.point.lon.toFixed(5)
     }
   },
 

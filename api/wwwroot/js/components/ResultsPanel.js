@@ -3,11 +3,10 @@ const { defineComponent, nextTick } = Vue
 
 // ── helpers ──────────────────────────────────────────────────
 function mean(arr) { return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0 }
-const EXCLUDE_COLS  = new Set(['year','hour','date','pixel'])
+const EXCLUDE_COLS  = new Set(['year','hour','date','pixel','doy'])
 const STRING_COLS   = new Set(['phenophase','phenoPhase'])
-// TleafOver/TleafUnder duplicate air temperature — hide from UI panel
-const HIDDEN_VARS  = new Set(['tleafover','tleafunder'])
-const MAX_HOURLY   = 365 * 24   // up to 1 full year of hourly data
+// Variables excluded from the chart toggle panel
+const HIDDEN_VARS  = new Set(['tleafover','tleafunder','phenophase','phenoPhase','waterstress'])
 
 function hexA(hex, a) {
   // append 2-digit alpha to a #rrggbb hex string → #rrggbbaa
@@ -232,13 +231,8 @@ window.ResultsPanel = defineComponent({
           </table>
         </div>
 
-        <!-- ── Toolbar ── -->
+        <!-- ── Toolbar (shared between both charts) ── -->
         <div class="charts-toolbar">
-          <select v-model="aggMode">
-            <option value="daily">Daily avg</option>
-            <option value="monthly">Monthly</option>
-            <option value="hourly">Hourly</option>
-          </select>
           <select v-model="chartType">
             <option value="line">Line</option>
             <option value="bar">Bar</option>
@@ -250,7 +244,7 @@ window.ResultsPanel = defineComponent({
             <input class="brush-date" type="date" v-model="dateTo" :min="dataDateMin" :max="dataDateMax" />
             <button v-if="dateFrom||dateTo" class="brush-reset" @click="clearBrush">✕</button>
           </div>
-          <span class="toolbar-info">{{ visibleDays }} pts · {{ aggMode }}</span>
+          <span class="toolbar-info">{{ visibleDays }} pts · {{ aggLabel }}</span>
           <a href="/api/results/latest" download="breath_results.csv"
              class="btn-outline btn-sm" style="margin-left:4px;text-decoration:none">⬇ CSV</a>
           <button class="chart-zoom-reset" @click="resetAllZoom" title="Reset zoom (Ctrl+scroll to zoom)">⤢</button>
@@ -350,7 +344,6 @@ window.ResultsPanel = defineComponent({
     return {
       hourly:        [],
       numericCols:   [],
-      aggMode:       'daily',
       chartType:     'line',
       swellDatasets: ['SWELL'],
       fluxDatasets:  ['GPP','RECO','NEE'],
@@ -360,9 +353,10 @@ window.ResultsPanel = defineComponent({
       _fluxChart:    null,
       _hasZoom:      typeof Chart !== 'undefined' && !!Chart.registry?.plugins?.get('zoom'),
       _hasAnnotation:typeof Chart !== 'undefined' && !!Chart.registry?.plugins?.get('annotation'),
-      _csvKey:       0,   // incremented each loadCsv call to force chart rebuild
-      showYearTable:  true,
-      showPhenoTable: true,
+      _csvKey:       0,
+      _zoomDays:     9999,   // current visible zoom range in days (updated on zoom/pan)
+      showYearTable:  false,
+      showPhenoTable: false,
     }
   },
 
@@ -370,23 +364,22 @@ window.ResultsPanel = defineComponent({
     hasData()  { return this.hourly.length > 0 },
     daily()    { return dailyAgg(this.hourly, this.numericCols) },
 
+    // zoom-based aggregation: hourly when zoomed in < 90 days, else daily
     agg() {
-      if (this.aggMode === 'monthly') return monthlyAgg(this.daily, this.numericCols)
-      if (this.aggMode === 'hourly')  return this.hourly
-      return this.daily
+      return this._zoomDays < 90 ? this.hourly : this.daily
     },
 
     filteredAgg() {
       let d = this.agg
       if (this.dateFrom) d = d.filter(r => r.date >= this.dateFrom)
       if (this.dateTo)   d = d.filter(r => r.date <= this.dateTo)
-      if (this.aggMode === 'hourly' && d.length > MAX_HOURLY) d = d.slice(-MAX_HOURLY)
-      return d.length ? d : (this.aggMode === 'hourly' ? this.agg.slice(-MAX_HOURLY) : this.agg)
+      return d.length ? d : this.agg
     },
 
     dataDateMin() { return this.daily[0]?.date ?? '' },
     dataDateMax() { return this.daily[this.daily.length-1]?.date ?? '' },
     visibleDays()  { return this.filteredAgg.length },
+    aggLabel()     { return this._zoomDays < 90 ? 'hourly' : 'daily' },
 
     stats() {
       let daily = this.daily
@@ -432,20 +425,35 @@ window.ResultsPanel = defineComponent({
       }
 
       const byYear = {}
+      const prevPhase = {}  // track previous phase per year for transition detection
+
       for (const r of this.hourly) {
         const yr = r.date?.slice(0,4); if (!yr) continue
         if (!byYear[yr]) byYear[yr] = { sgs:null, mat:null, sen:null, egs:null }
-        const m     = byYear[yr]
-        const phase = (r[phaseKey] ?? '').toString()
-        const doy   = r.doy ?? doyFromDate(r.date)
-        if (!doy) continue
-        if (m.sgs == null && /growth/i.test(phase))                             m.sgs = doy
-        if (m.mat == null && /green/i.test(phase)     && m.sgs != null)       m.mat = doy
-        // SEN: phenoCode 4→5 (Greendown→Senescence)
-        if (m.sen == null && /senesci|declin/i.test(phase) && m.mat != null)  m.sen = doy
-        // EGS: return to dormancy after growing season (works even without senescence, e.g. Mediterranean)
-        if (m.egs == null && /dorm|induct/i.test(phase)    && m.mat != null)  m.egs = doy
+        const m    = byYear[yr]
+        const cur  = (r[phaseKey] ?? '').toString()
+        const prev = prevPhase[yr] ?? ''
+        const doy  = r.doy ?? doyFromDate(r.date)
+        if (!doy) { prevPhase[yr] = cur; continue }
+
+        const changed = cur !== prev   // true at phase transition
+
+        // SGS: enter Growth (phenoCode 3)
+        if (m.sgs == null && /growth/i.test(cur) && changed)
+          m.sgs = doy
+        // MAT: enter Greendown (phenoCode 4) after SGS
+        if (m.mat == null && /green/i.test(cur) && changed && m.sgs != null)
+          m.mat = doy
+        // SEN: transition 4→5 (Greendown→Senescence)
+        if (m.sen == null && /senesci/i.test(cur) && changed)
+          m.sen = doy
+        // EGS: return to Dormancy after growing season (no SEN required)
+        if (m.egs == null && /dorm|induct/i.test(cur) && changed && m.mat != null)
+          m.egs = doy
+
+        prevPhase[yr] = cur
       }
+
       return Object.entries(byYear).sort(([a],[b])=>a<b?-1:1)
         .map(([yr, m]) => ({
           year: yr, sgs: m.sgs, mat: m.mat, sen: m.sen, egs: m.egs,
@@ -477,11 +485,11 @@ window.ResultsPanel = defineComponent({
   },
 
   watch: {
-    aggMode()  { nextTick(() => this.rebuild()) },
     chartType(){ nextTick(() => this.rebuild()) },
     dateFrom() { nextTick(() => this.rebuild()) },
     dateTo()   { nextTick(() => this.rebuild()) },
     _csvKey()  { this.dateFrom=''; this.dateTo=''; nextTick(()=>this.rebuild()) },
+    _zoomDays(){ nextTick(() => this.rebuild()) },
   },
 
   beforeUnmount() {
@@ -523,9 +531,14 @@ window.ResultsPanel = defineComponent({
       if (this.__syncing) return
       this.__syncing = true
       const { min, max } = source.scales.x
+      // Update zoom-days for agg switching
+      try {
+        const d1 = new Date(min), d2 = new Date(max)
+        if (!isNaN(d1) && !isNaN(d2))
+          this._zoomDays = Math.round((d2 - d1) / 86400000)
+      } catch {}
       for (const c of [this._swellChart, this._fluxChart]) {
         if (!c || c === source) continue
-        // Use plugin API if available, else fall back to direct option
         if (typeof c.zoomScale === 'function') {
           c.zoomScale('x', { min, max }, 'none')
         } else {
@@ -539,6 +552,7 @@ window.ResultsPanel = defineComponent({
 
     resetAllZoom() {
       this.__syncing = true
+      this._zoomDays = 9999
       this._swellChart?.resetZoom?.()
       this._fluxChart?.resetZoom?.()
       this.__syncing = false

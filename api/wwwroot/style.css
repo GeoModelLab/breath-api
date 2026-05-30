@@ -168,12 +168,21 @@ h2 {
   padding: 10px;
   display: flex; flex-direction: column; gap: 8px;
 }
-.completed .side-col {
-  width: 220px; flex: 0 0 220px;
-  border-right: 1px solid #1a2640;
+.completed .side-col { display: none; }
+
+/* Topbar log strip — single line, only during Running */
+.topbar-log-strip {
+  flex: 1; display: flex; align-items: center; gap: 6px;
+  margin: 0 12px; min-width: 0; overflow: hidden;
 }
-/* In completed state, show only the log (hide hints) */
-.completed .side-col .map-hint { display: none; }
+.tls-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: #60a5fa;
+  flex-shrink: 0; animation: blink 1.2s infinite;
+}
+.tls-text {
+  font-family: 'Consolas','Courier New',monospace; font-size: 10px;
+  color: #7090b0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 
 /* ── Results column (only in completed) ───────────────────── */
 .results-col {
