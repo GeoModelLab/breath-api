@@ -134,6 +134,8 @@ window.MapPanel = defineComponent({
       legendOpen:   false,
       LAND_CLASSES,
 
+      locationName: '',
+
       spotlightClass:  null,
       _spotlightLayer: null,
 
@@ -235,6 +237,19 @@ window.MapPanel = defineComponent({
         .addTo(this.map).bindPopup(`<b>${this.coord}</b>`).openPopup()
       this.$emit('point-selected', { lat, lon })
       this.checkForest(lat, lon)
+
+      // Reverse geocoding via Nominatim
+      fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`)
+        .then(r => r.json())
+        .then(d => {
+          const parts = [
+            d.address?.village || d.address?.town || d.address?.city || d.address?.county,
+            d.address?.state,
+            d.address?.country
+          ].filter(Boolean)
+          this.coord = parts.join(', ') + ` (${lat.toFixed(3)}° ${lon.toFixed(3)}°)`
+        })
+        .catch(() => {}) // keep existing coord on error
     },
 
     async checkForest(lat, lon) {

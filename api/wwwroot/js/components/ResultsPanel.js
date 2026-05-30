@@ -157,6 +157,28 @@ window.ResultsPanel = defineComponent({
             <div class="metric-value">{{ stats.peakGPP }}</div>
             <div class="metric-unit">µmol m⁻² s⁻¹</div>
           </div>
+          <div class="metric-card" style="grid-column:1/3">
+            <div class="metric-label">Carbon Use Efficiency (CUE = GPP/RECO)</div>
+            <div class="metric-value" style="font-size:1.4em">{{ stats.cue }}</div>
+            <div class="metric-unit">dimensionless · 1 = perfect sink</div>
+          </div>
+        </div>
+
+        <!-- ── Climate synthetics ── -->
+        <div v-if="climateStats" class="climate-strip">
+          <div class="cs-koppen">{{ climateStats.koppen }}</div>
+          <div class="cs-grid">
+            <div v-for="(s, name) in climateStats.seasonal" :key="name" class="cs-season">
+              <span class="cs-sname">{{ name }}</span>
+              <span class="cs-t">{{ s.t }}°C</span>
+              <span class="cs-p">{{ s.p }} mm</span>
+            </div>
+            <div class="cs-season cs-ann">
+              <span class="cs-sname">Annual</span>
+              <span class="cs-t">{{ climateStats.annT }}°C</span>
+              <span class="cs-p">{{ climateStats.annP }} mm</span>
+            </div>
+          </div>
         </div>
 
         <!-- ── Per-year KPI table ── -->
@@ -404,10 +426,13 @@ window.ResultsPanel = defineComponent({
       const reco = get('RECO','reco')
       const nee  = get('NEE','nee')
       const toGC = arr => Math.round(arr.reduce((a,b)=>a+b,0) * 86400 * 12.01 / 1e6 / nYears)
+      const annGPP  = toGC(gpp)
+      const annRECO = toGC(reco)
       return {
-        annNEE:  toGC(nee), annGPP: toGC(gpp), annRECO: toGC(reco),
+        annNEE:  toGC(nee), annGPP, annRECO,
         peakGPP: +Math.max(0,...gpp).toFixed(2), nDays,
         filtered: !!(this.dateFrom || this.dateTo),
+        cue: annGPP && annRECO ? (annGPP / annRECO).toFixed(2) : '—',
       }
     },
 
@@ -471,6 +496,67 @@ window.ResultsPanel = defineComponent({
           year: yr, sgs: m.sgs, mat: m.mat, sen: m.sen, egs: m.egs,
           gsl: (m.sgs && m.egs) ? m.egs - m.sgs : null,
         }))
+    },
+
+    // ── Köppen-Geiger + Seasonal statistics ──────────────────
+    climateStats() {
+      if (!this.daily.length) return null
+
+      // Raggruppa per mese
+      const monthly = {}
+      for (const r of this.daily) {
+        const m = r.date?.slice(5,7); if (!m) continue
+        if (!monthly[m]) monthly[m] = { t:[], p:[] }
+        if (r.t != null) monthly[m].t.push(r.t)
+        if (r.p != null) monthly[m].p.push(r.p)
+      }
+
+      // Medie mensili T e somme P (mm/month)
+      const months = Array.from({length:12}, (_,i) => String(i+1).padStart(2,'0'))
+      const tMonthly = months.map(m => monthly[m]?.t?.length ? monthly[m].t.reduce((a,b)=>a+b,0)/monthly[m].t.length : null)
+      const pMonthly = months.map(m => monthly[m]?.p?.length ? monthly[m].p.reduce((a,b)=>a+b,0)*30 : null) // mm/month approx
+
+      // Stagioni (DJF, MAM, JJA, SON) — T e P
+      const seas = {
+        DJF: [11,0,1], MAM:[2,3,4], JJA:[5,6,7], SON:[8,9,10]
+      }
+      const seasonal = {}
+      for (const [s, idxs] of Object.entries(seas)) {
+        const tVals = idxs.flatMap(i => monthly[months[i]]?.t ?? [])
+        const pVals = idxs.flatMap(i => monthly[months[i]]?.p ?? [])
+        seasonal[s] = {
+          t: tVals.length ? (tVals.reduce((a,b)=>a+b,0)/tVals.length).toFixed(1) : '—',
+          p: pVals.length ? (pVals.reduce((a,b)=>a+b,0)*10).toFixed(0) : '—'  // mm/season approx
+        }
+      }
+
+      const tAnn = tMonthly.filter(v=>v!=null)
+      const annT = tAnn.length ? (tAnn.reduce((a,b)=>a+b,0)/tAnn.length).toFixed(1) : '—'
+      const annP = pMonthly.filter(v=>v!=null).reduce((a,b)=>a+b,0).toFixed(0)
+      const tCold = Math.min(...tMonthly.filter(v=>v!=null))
+      const tWarm = Math.max(...tMonthly.filter(v=>v!=null))
+      const pDry  = Math.min(...pMonthly.filter(v=>v!=null))
+
+      // Köppen-Geiger semplificato
+      let koppen = '—'
+      if (tAnn.length > 0) {
+        const T = parseFloat(annT)
+        const P = parseFloat(annP)
+        if (tWarm < 10) koppen = 'E (Polar)'
+        else if (T > 18) {
+          if (pDry > 60) koppen = 'Af (Tropical)'
+          else koppen = 'Am/Aw (Tropical)'
+        } else if (T < 0) {
+          koppen = P > 400 ? 'Dfc/Dfd (Boreal)' : 'Bsk (Steppe)'
+        } else {
+          const pThresh = P / 25
+          if (pDry < pThresh) koppen = 'Csa/Csb (Mediterranean)'
+          else if (T < 8) koppen = 'Dfb/Dfc (Continental)'
+          else koppen = 'Cfb (Oceanic)'
+        }
+      }
+
+      return { seasonal, annT, annP, koppen, tMonthly, pMonthly }
     },
 
     // Per-year annual totals from the FULL daily series (ignores date filter)
