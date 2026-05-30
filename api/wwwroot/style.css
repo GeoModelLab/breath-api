@@ -581,6 +581,15 @@ h2 {
 }
 .chart-zoom-reset:hover { color: #60a5fa; border-color: #3b82f6; }
 
+/* Agg toggle Day/Hr */
+.agg-toggle { display: flex; gap: 1px; flex-shrink: 0; }
+.agg-btn {
+  padding: 2px 7px; font-size: 10px; font-weight: 600;
+  background: #1e293b; color: #475569; border: 1px solid #243050; border-radius: 4px;
+}
+.agg-btn.active { background: #1e3058; color: #60a5fa; border-color: #2563eb; }
+.agg-btn:hover:not(.active) { color: #94a3b8; }
+
 /* ══════════════════════════════════════════════════════════
    LEAFLET DARK TWEAKS
 ══════════════════════════════════════════════════════════ */

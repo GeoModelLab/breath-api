@@ -6,7 +6,7 @@ function mean(arr) { return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0
 const EXCLUDE_COLS  = new Set(['year','hour','date','pixel','doy'])
 const STRING_COLS   = new Set(['phenophase','phenoPhase'])
 // Variables excluded from the chart toggle panel
-const HIDDEN_VARS  = new Set(['tleafover','tleafunder','phenophase','phenoPhase','waterstress'])
+const HIDDEN_VARS  = new Set(['tleafover','tleafunder','phenophase','phenoPhase'])
 
 function hexA(hex, a) {
   // append 2-digit alpha to a #rrggbb hex string → #rrggbbaa
@@ -244,7 +244,11 @@ window.ResultsPanel = defineComponent({
             <input class="brush-date" type="date" v-model="dateTo" :min="dataDateMin" :max="dataDateMax" />
             <button v-if="dateFrom||dateTo" class="brush-reset" @click="clearBrush">✕</button>
           </div>
-          <span class="toolbar-info">{{ visibleDays }} pts · {{ aggLabel }}</span>
+          <span class="toolbar-info">{{ visibleDays }} pts</span>
+          <div class="agg-toggle">
+            <button :class="['agg-btn', aggMode==='daily'  && 'active']" @click="aggMode='daily'">Day</button>
+            <button :class="['agg-btn', aggMode==='hourly' && 'active']" @click="aggMode='hourly'" :title="!dateFrom && !dateTo ? 'Set a date range first for best performance' : ''">Hr</button>
+          </div>
           <a href="/api/results/latest" download="breath_results.csv"
              class="btn-outline btn-sm" style="margin-left:4px;text-decoration:none">⬇ CSV</a>
           <button class="chart-zoom-reset" @click="resetAllZoom" title="Reset zoom (Ctrl+scroll to zoom)">⤢</button>
@@ -344,6 +348,7 @@ window.ResultsPanel = defineComponent({
     return {
       hourly:        [],
       numericCols:   [],
+      aggMode:       'daily',   // 'daily' | 'hourly'
       chartType:     'line',
       swellDatasets: ['SWELL'],
       fluxDatasets:  ['GPP','RECO','NEE'],
@@ -354,7 +359,6 @@ window.ResultsPanel = defineComponent({
       _hasZoom:      typeof Chart !== 'undefined' && !!Chart.registry?.plugins?.get('zoom'),
       _hasAnnotation:typeof Chart !== 'undefined' && !!Chart.registry?.plugins?.get('annotation'),
       _csvKey:       0,
-      _zoomDays:     9999,   // current visible zoom range in days (updated on zoom/pan)
       showYearTable:  false,
       showPhenoTable: false,
     }
@@ -364,22 +368,30 @@ window.ResultsPanel = defineComponent({
     hasData()  { return this.hourly.length > 0 },
     daily()    { return dailyAgg(this.hourly, this.numericCols) },
 
-    // zoom-based aggregation: hourly when zoomed in < 90 days, else daily
     agg() {
-      return this._zoomDays < 90 ? this.hourly : this.daily
+      if (this.aggMode === 'hourly') {
+        // Hourly: limit to date filter range to keep rendering fast
+        let d = this.hourly
+        if (this.dateFrom) d = d.filter(r => r.date >= this.dateFrom)
+        if (this.dateTo)   d = d.filter(r => r.date <= this.dateTo)
+        // Safety cap: max 90 days of hourly = 2160 points
+        if (d.length > 90 * 24) d = d.slice(-90 * 24)
+        return d
+      }
+      return this.daily
     },
 
     filteredAgg() {
-      let d = this.agg
+      if (this.aggMode === 'hourly') return this.agg   // already filtered in agg
+      let d = this.daily
       if (this.dateFrom) d = d.filter(r => r.date >= this.dateFrom)
       if (this.dateTo)   d = d.filter(r => r.date <= this.dateTo)
-      return d.length ? d : this.agg
+      return d.length ? d : this.daily
     },
 
     dataDateMin() { return this.daily[0]?.date ?? '' },
     dataDateMax() { return this.daily[this.daily.length-1]?.date ?? '' },
     visibleDays()  { return this.filteredAgg.length },
-    aggLabel()     { return this._zoomDays < 90 ? 'hourly' : 'daily' },
 
     stats() {
       let daily = this.daily
@@ -485,11 +497,11 @@ window.ResultsPanel = defineComponent({
   },
 
   watch: {
+    aggMode()  { nextTick(() => this.rebuild()) },
     chartType(){ nextTick(() => this.rebuild()) },
     dateFrom() { nextTick(() => this.rebuild()) },
     dateTo()   { nextTick(() => this.rebuild()) },
-    _csvKey()  { this.dateFrom=''; this.dateTo=''; nextTick(()=>this.rebuild()) },
-    _zoomDays(){ nextTick(() => this.rebuild()) },
+    _csvKey()  { this.aggMode='daily'; this.dateFrom=''; this.dateTo=''; nextTick(()=>this.rebuild()) },
   },
 
   beforeUnmount() {
@@ -531,12 +543,6 @@ window.ResultsPanel = defineComponent({
       if (this.__syncing) return
       this.__syncing = true
       const { min, max } = source.scales.x
-      // Update zoom-days for agg switching
-      try {
-        const d1 = new Date(min), d2 = new Date(max)
-        if (!isNaN(d1) && !isNaN(d2))
-          this._zoomDays = Math.round((d2 - d1) / 86400000)
-      } catch {}
       for (const c of [this._swellChart, this._fluxChart]) {
         if (!c || c === source) continue
         if (typeof c.zoomScale === 'function') {
@@ -552,7 +558,6 @@ window.ResultsPanel = defineComponent({
 
     resetAllZoom() {
       this.__syncing = true
-      this._zoomDays = 9999
       this._swellChart?.resetZoom?.()
       this._fluxChart?.resetZoom?.()
       this.__syncing = false

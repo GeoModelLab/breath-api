@@ -230,9 +230,12 @@ createApp({
             clearInterval(this._poll)
             this._sse?.close()
             if (s.status === 'Completed') {
-              await this.loadResults()
+              // Set state FIRST so results-col is visible before charts try to render
               this.appState = 'completed'
-              this.$nextTick(() => this.$refs.mapPanel?.resize())
+              this.$nextTick(() => {
+                this.$refs.mapPanel?.resize()
+                this.loadResults()
+              })
             } else if (this.appState !== 'completed') {
               this.appState = 'selecting'
             }

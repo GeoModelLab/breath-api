@@ -333,7 +333,7 @@ namespace runner
                     "pixel,date,year,hour," +
                     "t,p,sw,rh,vpd,et0," +
                     "phenoPhase,SWELL,reference,vegetationCover," +
-                    "tscale,PARscale,waterAvailability,PhenologyScale,vpdScale," +
+                    "tscale,PARscale,waterStress,PhenologyScale,vpdScale," +
                     "TscaleRECO,PhenoRECO,recoTandWS,recoGPP," +
                     "GPP,RECO,NEE");
 
