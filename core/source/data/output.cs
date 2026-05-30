@@ -159,6 +159,7 @@ namespace source.data
         public List<float> ET0memory = new List<float>(); //memory of the reference evapotranspiration for the computation of the photosynthesis and respiration rates
         public List<float> PrecipitationMemory = new List<float>(); //memory of the precipitation for the computation of the photosynthesis and respiration rates
         public List<float> Wscale = new List<float>(); // soil moisture index for the computation of the photosynthesis and respiration rates
+        public List<float> WaterAvailability = new List<float>(); // raw water availability [0-1] before threshold/sensitivity transform
         public List<float> vpdScale = new List<float>(); // vapor pressure deficit index for the computation of the photosynthesis and respiration rates
         public List<float> temperatureScale = new List<float>(); // temperature index for the computation of the photosynthesis and respiration rates
         public float slowPool { get; set; } // carbon pool used for the computation of the respiration rate

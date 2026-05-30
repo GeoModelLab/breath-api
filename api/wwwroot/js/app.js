@@ -22,8 +22,6 @@ createApp({
         </div>
 
         <div class="topbar-right">
-          <!-- Log strip — always visible -->
-          <LogPanel ref="log" class="topbar-log" />
 
           <!-- Back to results when user went to map but results still exist -->
           <button v-if="appState === 'selecting' && lastCsvText"
@@ -57,9 +55,10 @@ createApp({
           <MapPanel ref="mapPanel" @point-selected="onPoint" @area-selected="onAreaSelected" />
         </div>
 
-        <!-- Side column: run controls (hidden in completed) -->
+        <!-- Side column: controls + log (narrow in completed = log only) -->
         <div class="side-col">
           <ControlPanel
+            v-if="appState !== 'completed'"
             :point="point"
             :status="status"
             :started-at="startedAt"
@@ -67,6 +66,7 @@ createApp({
             :selected-pixels="selectedPixels"
             @run="onRun"
           />
+          <LogPanel ref="log" />
           <div v-if="appState === 'selecting' && !point && !selectedPixels.length" class="map-hint">
             <strong>Click on the map</strong> to select a forest pixel,<br>
             or use <strong>⬚ Area</strong> to draw a multi-pixel grid.<br>

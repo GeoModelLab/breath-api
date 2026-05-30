@@ -162,7 +162,11 @@ window.ResultsPanel = defineComponent({
 
         <!-- ── Per-year KPI table ── -->
         <div class="year-table-wrap" v-if="yearlyStats.length > 1">
-          <table class="year-table">
+          <div class="table-toggle" @click="showYearTable=!showYearTable">
+            <span>Annual summary</span>
+            <span class="toggle-arrow">{{ showYearTable ? '▲' : '▼' }}</span>
+          </div>
+          <table v-if="showYearTable" class="year-table">
             <thead>
               <tr>
                 <th>Year</th>
@@ -197,7 +201,11 @@ window.ResultsPanel = defineComponent({
 
         <!-- ── Phenological metrics ── -->
         <div v-if="phenoMetrics.length" class="pheno-table-wrap">
-          <table class="year-table">
+          <div class="table-toggle" @click="showPhenoTable=!showPhenoTable">
+            <span>Phenological dates (DOY)</span>
+            <span class="toggle-arrow">{{ showPhenoTable ? '▲' : '▼' }}</span>
+          </div>
+          <table v-if="showPhenoTable" class="year-table">
             <thead>
               <tr>
                 <th>Year</th>
@@ -350,7 +358,11 @@ window.ResultsPanel = defineComponent({
       dateTo:        '',
       _swellChart:   null,
       _fluxChart:    null,
-      _hasZoom: typeof Chart !== 'undefined' && !!Chart.registry?.plugins?.get('zoom'),
+      _hasZoom:      typeof Chart !== 'undefined' && !!Chart.registry?.plugins?.get('zoom'),
+      _hasAnnotation:typeof Chart !== 'undefined' && !!Chart.registry?.plugins?.get('annotation'),
+      _csvKey:       0,   // incremented each loadCsv call to force chart rebuild
+      showYearTable:  true,
+      showPhenoTable: true,
     }
   },
 
@@ -467,7 +479,7 @@ window.ResultsPanel = defineComponent({
     chartType(){ nextTick(() => this.rebuild()) },
     dateFrom() { nextTick(() => this.rebuild()) },
     dateTo()   { nextTick(() => this.rebuild()) },
-    hasData(v) { if (v) { this.dateFrom=''; this.dateTo=''; nextTick(()=>this.rebuild()) } },
+    _csvKey()  { this.dateFrom=''; this.dateTo=''; nextTick(()=>this.rebuild()) },
   },
 
   beforeUnmount() {
@@ -511,16 +523,63 @@ window.ResultsPanel = defineComponent({
       const { min, max } = source.scales.x
       for (const c of [this._swellChart, this._fluxChart]) {
         if (!c || c === source) continue
-        c.options.scales.x.min = min
-        c.options.scales.x.max = max
-        c.update('none')
+        // Use plugin API if available, else fall back to direct option
+        if (typeof c.zoomScale === 'function') {
+          c.zoomScale('x', { min, max }, 'none')
+        } else {
+          c.options.scales.x.min = min
+          c.options.scales.x.max = max
+          c.update('none')
+        }
       }
       this.__syncing = false
     },
 
     resetAllZoom() {
+      this.__syncing = true
       this._swellChart?.resetZoom?.()
       this._fluxChart?.resetZoom?.()
+      this.__syncing = false
+    },
+
+    // ── Phenological annotations for SWELL chart ─────────────
+    _phenoAnnotations() {
+      if (!this._hasAnnotation) return {}
+      const MARKERS = {
+        sgs: { color: '#4ade80', label: 'SGS' },
+        mat: { color: '#facc15', label: 'MAT' },
+        sen: { color: '#f97316', label: 'SEN' },
+        egs: { color: '#f87171', label: 'EGS' },
+      }
+      const doyToDate = (yr, doy) => {
+        const d = new Date(parseInt(yr), 0, doy)
+        return d.toISOString().slice(0,10)
+      }
+      const annotations = {}
+      for (const m of this.phenoMetrics) {
+        for (const [key, cfg] of Object.entries(MARKERS)) {
+          if (m[key] == null) continue
+          const dateStr = doyToDate(m.year, m[key])
+          // Only annotate if the date is within filtered range
+          annotations[`${key}_${m.year}`] = {
+            type: 'line',
+            xMin: dateStr, xMax: dateStr,
+            borderColor: cfg.color,
+            borderWidth: 1.5,
+            borderDash: [4, 3],
+            label: {
+              display: true,
+              content: cfg.label,
+              position: 'start',
+              color: cfg.color,
+              backgroundColor: 'transparent',
+              font: { size: 9 },
+              padding: 2,
+            },
+          }
+        }
+      }
+      return annotations
     },
 
     // ── Dataset builder ───────────────────────────────────────
@@ -613,6 +672,7 @@ window.ResultsPanel = defineComponent({
               }},
             },
             ...this._zoomPlugin(),
+            annotation: { annotations: this._phenoAnnotations() },
           },
           scales: {
             x:      this._xAxis(),
@@ -723,6 +783,7 @@ window.ResultsPanel = defineComponent({
         if (f) this.fluxDatasets = [f]
       }
       this.dateFrom=''; this.dateTo=''
+      this._csvKey++   // trigger chart rebuild even when data was already present
     },
   },
 })

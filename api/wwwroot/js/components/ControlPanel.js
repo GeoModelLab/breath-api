@@ -74,6 +74,7 @@ window.ControlPanel = defineComponent({
         <select v-model="inputWeather" :disabled="running">
           <option value="hourly">NASA POWER — hourly (recommended)</option>
           <option value="daily">NASA POWER — daily (disaggregated)</option>
+          <option value="era5land">ERA5-Land — daily (experimental)</option>
         </select>
       </div>
 

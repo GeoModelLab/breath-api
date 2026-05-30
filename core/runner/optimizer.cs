@@ -333,7 +333,7 @@ namespace runner
                     "pixel,date,year,doy,hour," +
                     "t,p,sw,rh,vpd,et0," +
                     "phenoPhase,SWELL,reference,vegetationCover," +
-                    "tscale,PARscale,waterStress,PhenologyScale,vpdScale," +
+                    "tscale,PARscale,waterStress,waterAvailability,PhenologyScale,vpdScale," +
                     "TscaleRECO,PhenoRECO,recoTandWS,recoGPP," +
                     "GPP,RECO,NEE");
 
@@ -395,6 +395,7 @@ namespace runner
                                 fmt(getH(ex.temperatureScale, hour)),
                                 fmt(getH(ex.PARscale,         hour)),
                                 fmt(getH(ex.Wscale,           hour)),
+                                fmt(ex.WaterAvailability.Count > 0 ? ex.WaterAvailability[0] : 1f),
                                 fmt(ex.phenologyScale),
                                 fmt(getH(ex.vpdScale,         hour)),
 

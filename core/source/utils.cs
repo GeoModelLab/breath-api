@@ -514,7 +514,11 @@ namespace source.functions
                     waterStressGPP = parameters.parPhotosynthesis.waterStressSensitivity *
                         (waterAvailability - parameters.parPhotosynthesis.waterStressThreshold) + 1;
                 }
- 
+
+                // store raw water availability for CSV output (0–1 scale, before threshold transform)
+                outputT1.exchanges.WaterAvailability.Clear();
+                outputT1.exchanges.WaterAvailability.Add(waterAvailability);
+
                 //remove when the memory effect ends
                 if (outputT1.exchanges.ET0memory.Count > (int)parameters.parPhotosynthesis.waterStressDays)
                 {
