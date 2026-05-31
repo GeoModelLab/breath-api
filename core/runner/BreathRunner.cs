@@ -217,7 +217,6 @@ namespace runner
                             }
                         }
                     }
-                    }
 
                     var paramCalibValue = new Dictionary<string, float>();
 
