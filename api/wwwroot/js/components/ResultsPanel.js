@@ -195,20 +195,18 @@ window.ResultsPanel = defineComponent({
           </div>
         </div>
 
-        <!-- ── Plant health radar ── -->
-        <div v-if="healthStats" class="health-radar-wrap">
-          <div class="health-radar-hd" @click="toggleHealth">
-            <span>🌿 Plant Health</span>
+        <!-- ── Scaler KPIs ── -->
+        <div v-if="healthStats" class="scaler-kpi-wrap">
+          <div class="scaler-kpi-hd" @click="healthOpen=!healthOpen">
+            <span>🌿 Scalers (simulation mean)</span>
             <span class="toggle-arrow">{{ healthOpen ? '▲' : '▼' }}</span>
           </div>
-          <div v-show="healthOpen" class="health-radar-body">
-            <canvas ref="radarCanvas" width="300" height="180" style="display:block;margin:0 auto"></canvas>
-            <div class="health-legend">
-              <span v-for="s in healthStats.scores" :key="s.label" class="health-chip"
-                    :style="{borderColor: s.color}">
-                <span class="hchip-dot" :style="{background:s.color}"></span>
-                {{ s.label }}: <b>{{ s.pct }}%</b>
-              </span>
+          <div v-show="healthOpen" class="scaler-kpi-body">
+            <div v-for="s in healthStats.scores" :key="s.label" class="scaler-chip"
+                 :style="{borderColor: s.color + '88'}">
+              <span class="scaler-dot" :style="{background:s.color}"></span>
+              <span class="scaler-label">{{ s.label }}</span>
+              <span class="scaler-val" :style="{color:s.color}">{{ s.pct }}%</span>
             </div>
           </div>
         </div>
@@ -716,7 +714,6 @@ window.ResultsPanel = defineComponent({
     this._swellChart?.destroy()
     this._fluxChart?.destroy()
     this._climoChart?.destroy()
-    this.__radarChart?.destroy()
   },
 
   methods: {
@@ -800,12 +797,10 @@ window.ResultsPanel = defineComponent({
       const varName = this.var3D
       if (!this.numericCols.includes(varName)) return
 
-      // Build DOY × Hour matrix (365 × 24), averaged over all years
-      const grid = {}  // key: `${doy}_${hour}` → values[]
+      const grid = {}
       for (const r of this.hourly) {
         const val = r[varName]
         if (val == null || !isFinite(val)) continue
-        // compute DOY from date
         const dt  = new Date(r.date)
         const doy = Math.floor((dt - new Date(dt.getFullYear(), 0, 0)) / 86400000)
         const hr  = r.hour != null ? +r.hour : (r._dt ? parseInt(r._dt.slice(11,13)) : 12)
@@ -816,8 +811,10 @@ window.ResultsPanel = defineComponent({
 
       const doys  = Array.from({length:365}, (_,i)=>i+1)
       const hours = Array.from({length:24},  (_,i)=>i+1)
-      const zData = doys.map(doy =>
-        hours.map(hr => {
+
+      // Matrix: rows=hours, cols=doys → x=doys (long axis), y=hours (short axis)
+      const zData = hours.map(hr =>
+        doys.map(doy => {
           const v = grid[`${doy}_${hr}`]
           return v && v.length ? v.reduce((a,b)=>a+b,0)/v.length : null
         })
@@ -825,11 +822,10 @@ window.ResultsPanel = defineComponent({
 
       const colorscale = IS_FLUX(varName) ? 'Viridis' : 'YlOrRd'
 
-      // Optional: SWELL daily curve shown at hour=12
       const traces = [{
         type:       'surface',
-        x:          hours,
-        y:          doys,
+        x:          doys,   // long axis
+        y:          hours,  // short axis
         z:          zData,
         colorscale,
         colorbar: {
@@ -863,17 +859,17 @@ window.ResultsPanel = defineComponent({
           const vals = swellByDoy[d]
           if (!vals?.length) return null
           const avg = vals.reduce((a,b)=>a+b,0)/vals.length
-          return zMin + avg * (zMax - zMin)  // scale SWELL to z range
+          return zMin + avg * (zMax - zMin)
         })
         traces.push({
           type: 'scatter3d',
           mode: 'lines',
-          x: Array(doys.length).fill(12),
-          y: doys,
+          x: doys,
+          y: Array(doys.length).fill(12),
           z: swellZ,
           line: { color: '#facc15', width: 4 },
           name: 'SWELL',
-          hovertemplate: 'DOY %{y}<br>SWELL %{customdata:.2f}<extra></extra>',
+          hovertemplate: 'DOY %{x}<br>SWELL %{customdata:.2f}<extra></extra>',
           customdata: doys.map(d => {
             const vals = swellByDoy[d]; return vals?.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null
           }),
@@ -885,13 +881,13 @@ window.ResultsPanel = defineComponent({
         plot_bgcolor:  '#0e1520',
         margin: { l:10, r:10, t:60, b:20 },
         scene: {
-          xaxis: { title: 'Hour', color: '#64748b', gridcolor: '#1e2d44', zerolinecolor: '#1e2d44' },
-          yaxis: { title: 'DOY',  color: '#64748b', gridcolor: '#1e2d44', zerolinecolor: '#1e2d44' },
+          xaxis: { title: 'DOY',  color: '#64748b', gridcolor: '#1e2d44', zerolinecolor: '#1e2d44' },
+          yaxis: { title: 'Hour', color: '#64748b', gridcolor: '#1e2d44', zerolinecolor: '#1e2d44' },
           zaxis: { title: varUnit(varName) || varName, color: '#64748b', gridcolor: '#1e2d44' },
           bgcolor: '#0e1520',
           aspectmode: 'manual',
-          aspectratio: { x: 3, y: 1, z: 0.6 },
-          camera: { eye: { x: 1.4, y: -2.0, z: 0.7 } },
+          aspectratio: { x: 2, y: 1, z: 0.6 },
+          camera: { eye: { x: 1.8, y: -1.2, z: 0.8 } },
         },
         showlegend: true,
         legend: { x: 0.01, y: 0.99, font: { color: '#94a3b8', size: 9 }, bgcolor: 'transparent' },
@@ -936,36 +932,48 @@ window.ResultsPanel = defineComponent({
         const d = new Date(parseInt(yr), 0, doy)
         return d.toISOString().slice(0,10)
       }
-      // Stagger label positions across years so they don't overlap
-      // Each year gets a different vertical offset: 0%, 20%, 40%, 60%…
-      const years  = this.phenoMetrics.map(m => m.year)
-      const nYears = years.length
+      const nYears   = this.phenoMetrics.length
+      const lastYear = nYears ? this.phenoMetrics[nYears - 1].year : null
       const annotations = {}
-      for (let yi = 0; yi < this.phenoMetrics.length; yi++) {
-        const m = this.phenoMetrics[yi]
-        const isLast = yi === nYears - 1
-        // Spread positions: last year at top (5%), others staggered downward
-        const pct = isLast ? '5%' : `${5 + (nYears - 1 - yi) * Math.min(20, 60 / Math.max(1, nYears - 1))}%`
+      for (const m of this.phenoMetrics) {
+        const isLast = m.year === lastYear
         for (const [key, cfg] of Object.entries(MARKERS)) {
           if (m[key] == null) continue
           const dateStr = doyToDate(m.year, m[key])
-          const label   = isLast ? cfg.label : (key === 'sgs' ? m.year : cfg.label.slice(0,1))
           annotations[`${key}_${m.year}`] = {
             type: 'line',
             xMin: dateStr, xMax: dateStr,
             borderColor: cfg.color,
-            borderWidth: isLast ? 1.5 : 0.7,
+            borderWidth: isLast ? 1.5 : 0.6,
             borderDash: [4, 3],
             label: {
-              display: true,
-              content: label,
-              position: pct,
+              display: isLast,
+              content: cfg.label,
+              position: 'start',
               color: cfg.color,
-              backgroundColor: 'rgba(14,21,32,0.75)',
-              font: { size: isLast ? 9 : 8 },
+              backgroundColor: 'rgba(14,21,32,0.8)',
+              font: { size: 9 },
               padding: 2,
             },
           }
+        }
+      }
+      // Extra: one label per non-last year at SGS position showing just the year number
+      for (const m of this.phenoMetrics) {
+        if (m.year === lastYear || m.sgs == null) continue
+        const dateStr = doyToDate(m.year, m.sgs)
+        annotations[`year_${m.year}`] = {
+          type: 'label',
+          xValue: dateStr,
+          yAdjust: -4,
+          backgroundColor: 'rgba(14,21,32,0.8)',
+          borderColor: '#4ade8066',
+          borderWidth: 1,
+          borderRadius: 3,
+          content: [m.year],
+          color: '#4ade80',
+          font: { size: 8 },
+          padding: 2,
         }
       }
       return annotations
@@ -1217,59 +1225,6 @@ window.ResultsPanel = defineComponent({
       return scores.length ? { scores } : null
     },
 
-    toggleHealth() {
-      this.healthOpen = !this.healthOpen
-      if (this.healthOpen && this.healthStats && !this.__radarChart) {
-        nextTick(() => this.buildRadarChart())
-      }
-    },
-
-    buildRadarChart() {
-      const h = this.healthStats
-      if (!h || !this.$refs.radarCanvas) return
-      if (this.__radarChart) { this.__radarChart.destroy(); this.__radarChart = null }
-      const labels = h.scores.map(s => s.label)
-      const data   = h.scores.map(s => s.val * 100)
-      const colors = h.scores.map(s => s.color)
-      this.__radarChart = new Chart(this.$refs.radarCanvas, {
-        type: 'radar',
-        data: {
-          labels,
-          datasets: [{
-            label: 'Plant Health',
-            data,
-            backgroundColor: 'rgba(74,222,128,0.15)',
-            borderColor: '#4ade80',
-            borderWidth: 2,
-            pointBackgroundColor: colors,
-            pointRadius: 4,
-            pointHoverRadius: 6,
-          }],
-        },
-        options: {
-          responsive: false,
-          animation: { duration: 0 },
-          scales: {
-            r: {
-              min: 0, max: 100,
-              ticks: { stepSize: 25, color: '#64748b', font: { size: 8 }, backdropColor: 'transparent' },
-              grid: { color: '#1e2d44' },
-              angleLines: { color: '#1e2d44' },
-              pointLabels: { color: '#94a3b8', font: { size: 9 } },
-            },
-          },
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              backgroundColor: '#182030', titleColor: '#7080a0', bodyColor: '#c8d8e8',
-              borderColor: '#243050', borderWidth: 1,
-              callbacks: { label: ctx => ` ${ctx.parsed.r.toFixed(0)}%` },
-            },
-          },
-        },
-      })
-    },
-
     rebuild() {
       if (this._rebuilding) return
       this._rebuilding = true
@@ -1347,11 +1302,9 @@ window.ResultsPanel = defineComponent({
       this.healthStats = this._computeHealth(rows, [...colSet])
       this._swellChart?.destroy(); this._swellChart = null
       this._fluxChart?.destroy();  this._fluxChart  = null
-      if (this.__radarChart) { this.__radarChart.destroy(); this.__radarChart = null }
       nextTick(() => {
         this.buildSwellChart()
         this.buildFluxChart()
-        if (this.healthStats && this.healthOpen) this.buildRadarChart()
       })
     },
   },

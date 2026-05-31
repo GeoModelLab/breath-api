@@ -14,8 +14,8 @@ Live demo: **https://breath-api-thkm.onrender.com**
 
 | Format | Link |
 |--------|------|
-| Python notebook | [![nbviewer](https://raw.githubusercontent.com/jupyter/design/master/logos/Badges/nbviewer_badge.svg)](https://nbviewer.org/github/GeoModelLab/breath-api/blob/main/examples/breath_api_demo.ipynb) |
-| R vignette | [View on GitHub](https://github.com/GeoModelLab/breath-api/blob/main/examples/breath_api_demo.Rmd) · render locally with `rmarkdown::render("examples/breath_api_demo.Rmd")` |
+| Python notebook | [nbviewer ↗](https://nbviewer.org/urls/raw.githubusercontent.com/GeoModelLab/breath-api/main/examples/breath_api_demo.ipynb) · [raw source](https://github.com/GeoModelLab/breath-api/blob/main/examples/breath_api_demo.ipynb) |
+| R vignette | [View rendered HTML ↗](https://geomodellab.github.io/breath-api/breath_api_demo.html) · [source Rmd](https://github.com/GeoModelLab/breath-api/blob/main/examples/breath_api_demo.Rmd) |
 
 ---
 

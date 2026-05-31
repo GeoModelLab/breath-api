@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BREATH API – R Vignette</title>
+<style>
+/* ── Reset & base ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:          #ffffff;
+  --text:        #2c3e50;
+  --muted:       #6c7a89;
+  --border:      #dee2e6;
+  --accent:      #18bc9c;   /* flatly teal */
+  --accent-dark: #128f76;
+  --code-bg:     #282c34;
+  --code-text:   #abb2bf;
+  --toc-width:   240px;
+  --content-max: 860px;
+  --sidebar-bg:  #f8f9fa;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: "Lato", "Helvetica Neue", Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--text);
+  background: var(--bg);
+  display: flex;
+  min-height: 100vh;
+}
+
+/* ── TOC sidebar ── */
+#toc {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: var(--toc-width);
+  height: 100vh;
+  overflow-y: auto;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--border);
+  padding: 24px 0 40px;
+  z-index: 100;
+}
+
+#toc .toc-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 0 20px 12px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+
+#toc ul {
+  list-style: none;
+  padding: 0;
+}
+
+#toc ul li a {
+  display: block;
+  padding: 5px 20px;
+  font-size: 13px;
+  color: var(--text);
+  text-decoration: none;
+  border-left: 3px solid transparent;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  line-height: 1.4;
+}
+
+#toc ul li a:hover,
+#toc ul li a.active {
+  background: rgba(24, 188, 156, 0.08);
+  border-left-color: var(--accent);
+  color: var(--accent-dark);
+}
+
+/* ── Main content ── */
+#main {
+  margin-left: var(--toc-width);
+  flex: 1;
+  padding: 0 40px 80px;
+  max-width: calc(var(--toc-width) + var(--content-max));
+}
+
+/* ── Document header ── */
+.doc-header {
+  padding: 48px 0 32px;
+  border-bottom: 2px solid var(--accent);
+  margin-bottom: 40px;
+}
+
+.doc-header h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.2;
+  margin-bottom: 12px;
+}
+
+.doc-meta {
+  display: flex;
+  gap: 24px;
+  font-size: 13px;
+  color: var(--muted);
+  flex-wrap: wrap;
+}
+
+.doc-meta span::before {
+  font-weight: 600;
+  color: #8e9eab;
+  margin-right: 4px;
+}
+
+/* ── Prose headings ── */
+h2 {
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 48px 0 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 32px 0 12px;
+}
+
+/* ── Paragraphs & inline ── */
+p { margin-bottom: 14px; }
+
+strong { font-weight: 700; color: #1a252f; }
+
+em { font-style: italic; }
+
+a { color: var(--accent-dark); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+code {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.875em;
+  background: #eef2f5;
+  color: #c0392b;
+  padding: 2px 5px;
+  border-radius: 3px;
+}
+
+/* ── Lists ── */
+ul, ol {
+  padding-left: 24px;
+  margin-bottom: 14px;
+}
+
+li { margin-bottom: 4px; }
+li p { margin-bottom: 0; }
+
+/* ── Horizontal rule ── */
+hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 36px 0;
+}
+
+/* ── Code blocks ── */
+.code-block-wrap {
+  margin: 20px 0 24px;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+}
+
+.chunk-label {
+  background: #21252b;
+  color: #5c6370;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 11px;
+  padding: 5px 16px;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid #181a1f;
+}
+
+pre {
+  background: var(--code-bg);
+  color: var(--code-text);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 18px 20px;
+  overflow-x: auto;
+  margin: 0;
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+
+/* ── Syntax colours (One Dark palette) ── */
+.kw  { color: #c678dd; }          /* keywords: library, function, if, for, TRUE, FALSE … */
+.fn  { color: #61afef; }          /* function calls */
+.st  { color: #98c379; }          /* strings */
+.cm  { color: #5c6370; font-style: italic; } /* comments */
+.nb  { color: #e5c07b; }          /* numbers / built-in constants */
+.op  { color: #56b6c2; }          /* operators & pipes */
+.id  { color: var(--code-text); } /* plain identifiers */
+.na  { color: #e06c75; }          /* named args */
+
+/* ── Tables ── */
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 20px 0 28px;
+  font-size: 14px;
+}
+
+thead th {
+  background: #f1f3f5;
+  font-weight: 700;
+  padding: 9px 14px;
+  border-bottom: 2px solid var(--border);
+  text-align: left;
+}
+
+tbody td {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+tbody tr:hover { background: #f8f9fa; }
+
+/* ── Responsive ── */
+@media (max-width: 760px) {
+  #toc { display: none; }
+  #main { margin-left: 0; padding: 20px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ────────────────── TOC ────────────────── -->
+<nav id="toc">
+  <div class="toc-title">Contents</div>
+  <ul>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#dependencies">Dependencies</a></li>
+    <li><a href="#submit">1 · Submit a simulation</a></li>
+    <li><a href="#poll">2 · Poll until complete</a></li>
+    <li><a href="#parse">3 · Download and parse results</a></li>
+    <li><a href="#plot">4 · Annual carbon budget</a></li>
+    <li><a href="#timeseries">5 · Time-series plot</a></li>
+    <li><a href="#seasonal">6 · Seasonal diagnostics</a></li>
+    <li><a href="#phenology">7 · Phenological dates</a></li>
+    <li><a href="#grid">8 · Multi-pixel grid run</a></li>
+    <li><a href="#overrides">9 · Parameter overrides</a></li>
+    <li><a href="#session">Session info</a></li>
+  </ul>
+</nav>
+
+<!-- ────────────────── MAIN ────────────────── -->
+<main id="main">
+
+  <!-- Header -->
+  <header class="doc-header">
+    <h1>BREATH API – R Vignette</h1>
+    <div class="doc-meta">
+      <span><strong>Author:</strong> GeoModelLab</span>
+      <span><strong>Date:</strong> 2026</span>
+    </div>
+  </header>
+
+  <!-- ── Overview ── -->
+  <section>
+    <h2 id="overview">Overview</h2>
+    <p>
+      <strong>BREATH</strong> (Biophysical Rhythm of Ecosystem Activity &amp; Health) simulates
+      hourly GPP, RECO, and NEE for deciduous broadleaf forest pixels using:
+    </p>
+    <ul>
+      <li><strong>VPRM</strong> (Vegetation Photosynthesis and Respiration Model) for carbon fluxes</li>
+      <li><strong>SWELL</strong> phenology for seasonal leaf dynamics</li>
+      <li><strong>NASA POWER</strong> weather data (hourly or daily disaggregated)</li>
+    </ul>
+    <p>This vignette demonstrates the complete R workflow:</p>
+    <ol>
+      <li>Submit a simulation via the REST API</li>
+      <li>Poll until the run completes</li>
+      <li>Parse the hourly CSV results</li>
+      <li>Compute annual carbon budgets and seasonal diagnostics</li>
+      <li>Visualise fluxes and SWELL phenology</li>
+    </ol>
+
+    <h3 id="dependencies">Dependencies</h3>
+
+    <div class="code-block-wrap">
+      <div class="chunk-label">r  packages</div>
+      <pre><code><span class="cm"># install.packages(c("httr2", "readr", "dplyr", "tidyr", "lubridate", "ggplot2", "patchwork"))</span>
+<span class="kw">library</span>(httr2)
+<span class="kw">library</span>(readr)
+<span class="kw">library</span>(dplyr)
+<span class="kw">library</span>(tidyr)
+<span class="kw">library</span>(lubridate)
+<span class="kw">library</span>(ggplot2)
+<span class="kw">library</span>(patchwork)
+
+BASE_URL <span class="op">&lt;-</span> <span class="st">"https://breath-api-thkm.onrender.com"</span>
+<span class="cm"># For local development use: BASE_URL &lt;- "http://localhost:5244"</span></code></pre>
+    </div>
+  </section>
+
+  <hr>
+
+  <!-- ── Submit ── -->
+  <section>
+    <h2 id="submit">1 · Submit a simulation</h2>
+    <p>
+      A pixel is identified by <code>"lat_lon"</code> (4 decimal places).
+      We simulate a deciduous broadleaf forest in the northern Apennines (Italy).
+    </p>
+
+    <div class="code-block-wrap">
+      <div class="chunk-label">r  submit</div>
+      <pre><code>pixel    <span class="op">&lt;-</span> <span class="st">"44.1234_10.7654"</span>
+start_yr <span class="op">&lt;-</span> <span class="nb">2022L</span>
+end_yr   <span class="op">&lt;-</span> <span class="nb">2024L</span>
+
+payload <span class="op">&lt;-</span> <span class="fn">list</span>(
+  settings <span class="op">=</span> <span class="fn">list</span>(
+    <span class="na">pixelsRun           =</span> <span class="fn">list</span>(pixel),
+    <span class="na">startYear           =</span> start_yr,
+    <span class="na">endYear             =</span> end_yr,
+    <span class="na">inputWeather        =</span> <span class="st">"hourly"</span>,        <span class="cm"># "hourly" | "daily" | "era5land"</span>
+    <span class="na">modelVariant        =</span> <span class="st">"Circadian"</span>,     <span class="cm"># "Baseline" | "Pheno" | "Circadian"</span>
+    <span class="na">calibration         =</span> <span class="kw">FALSE</span>,           <span class="cm"># TRUE = calibrate against MODIS EVI</span>
+    <span class="na">calibrationVariable =</span> <span class="st">"Phenology"</span>,
+    <span class="na">simplexes           =</span> <span class="nb">3L</span>,
+    <span class="na">iterations          =</span> <span class="nb">200L</span>,
+    <span class="na">parametersDataFile  =</span> <span class="st">"photothermalRequirements.csv"</span>
+  )
+)
+
+resp <span class="op">&lt;-</span> <span class="fn">request</span>(<span class="fn">paste0</span>(BASE_URL, <span class="st">"/api/breath/run"</span>)) <span class="op">|&gt;</span>
+  <span class="fn">req_method</span>(<span class="st">"POST"</span>) <span class="op">|&gt;</span>
+  <span class="fn">req_body_json</span>(payload) <span class="op">|&gt;</span>
+  <span class="fn">req_timeout</span>(<span class="nb">30</span>) <span class="op">|&gt;</span>
+  <span class="fn">req_perform</span>()
+
+<span class="fn">resp_body_json</span>(resp)</code></pre>
+    </div>
+  </section>
+
+  <hr>
+
+  <!-- ── Poll ── -->
+  <section>
+    <h2 id="poll">2 · Poll until complete</h2>
+
+    <div class="code-block-wrap">
+      <div class="chunk-label">r  poll</div>
+      <pre><code>wait_for_completion <span class="op">&lt;-</span> <span class="kw">function</span>(base_url, <span class="na">poll_interval =</span> <span class="nb">10</span>, <span class="na">timeout =</span> <span class="nb">600</span>) {
+  deadline <span class="op">&lt;-</span> <span class="fn">Sys.time</span>() <span class="op">+</span> timeout
+  <span class="kw">repeat</span> {
+    status <span class="op">&lt;-</span> <span class="fn">request</span>(<span class="fn">paste0</span>(base_url, <span class="st">"/api/breath/status"</span>)) <span class="op">|&gt;</span>
+      <span class="fn">req_timeout</span>(<span class="nb">10</span>) <span class="op">|&gt;</span>
+      <span class="fn">req_perform</span>() <span class="op">|&gt;</span>
+      <span class="fn">resp_body_json</span>()
+
+    <span class="fn">cat</span>(<span class="fn">sprintf</span>(<span class="st">"\r  Status: %-12s"</span>, status<span class="op">$</span>Status))
+
+    <span class="kw">if</span> (status<span class="op">$</span>Status <span class="op">==</span> <span class="st">"Completed"</span>) {
+      <span class="fn">cat</span>(<span class="fn">sprintf</span>(<span class="st">"\nDone — duration: %s ms\n"</span>, status<span class="op">$</span>DurationMs <span class="op">%||%</span> <span class="st">"?"</span>))
+      <span class="kw">return</span>(<span class="fn">invisible</span>(status))
+    }
+    <span class="kw">if</span> (status<span class="op">$</span>Status <span class="op">==</span> <span class="st">"Failed"</span>)
+      <span class="fn">stop</span>(<span class="st">"Simulation failed. Check /api/breath/stream/logs for details."</span>)
+    <span class="kw">if</span> (<span class="fn">Sys.time</span>() <span class="op">&gt;</span> deadline)
+      <span class="fn">stop</span>(<span class="fn">sprintf</span>(<span class="st">"Simulation did not finish within %d s."</span>, timeout))
+
+    <span class="fn">Sys.sleep</span>(poll_interval)
+  }
+}
+
+<span class="cm"># Null-coalescing helper (base R &lt; 4.4 compatible)</span>
+<span class="na">`%||%`</span> <span class="op">&lt;-</span> <span class="kw">function</span>(a, b) <span class="kw">if</span> (<span class="op">!</span><span class="fn">is.null</span>(a)) a <span class="kw">else</span> b
+
+<span class="fn">wait_for_completion</span>(BASE_URL)</code></pre>
+    </div>
+  </section>
+
+  <hr>
+
+  <!-- ── Parse ── -->
+  <section>
+    <h2 id="parse">3 · Download and parse results</h2>
+    <p>
+      <code>GET /api/results/latest</code> returns a CSV with one row per simulated hour.
+    </p>
+
+    <div class="code-block-wrap">
+      <div class="chunk-label">r  download</div>
+      <pre><code>csv_raw <span class="op">&lt;-</span> <span class="fn">request</span>(<span class="fn">paste0</span>(BASE_URL, <span class="st">"/api/results/latest"</span>)) <span class="op">|&gt;</span>
+  <span class="fn">req_timeout</span>(<span class="nb">60</span>) <span class="op">|&gt;</span>
+  <span class="fn">req_perform</span>() <span class="op">|&gt;</span>
+  <span class="fn">resp_body_string</span>()
+
+df <span class="op">&lt;-</span> <span class="fn">read_csv</span>(csv_raw, <span class="na">show_col_types =</span> <span class="kw">FALSE</span>) <span class="op">|&gt;</span>
+  <span class="fn">mutate</span>(<span class="na">date =</span> <span class="fn">as.Date</span>(date),
+         <span class="na">year  =</span> <span class="fn">year</span>(date),
+         <span class="na">month =</span> <span class="fn">month</span>(date),
+         <span class="na">doy   =</span> <span class="fn">yday</span>(date))
+
+<span class="fn">glimpse</span>(df)</code></pre>
+    </div>
+  </section>
+
+  <hr>
+
+  <!-- ── Annual budget ── -->
+  <section>
+    <h2 id="plot">4 · Annual carbon budget</h2>
+    <p>
+      Daily mean fluxes (µmol CO₂ m⁻² s⁻¹) × 86&nbsp;400 s day⁻¹ × 12.01 g mol⁻¹ × 10⁻⁶ mol µmol⁻¹
+      = gC m⁻² day⁻¹.
+    </p>
+
+    <div class="code-block-wrap">
+      <div class="chunk-label">r  annual-budget</div>
+      <pre><code>UMOL_TO_GC_DAY <span class="op">&lt;-</span> <span class="nb">86400</span> <span class="op">*</span> <span class="nb">12.01e-6</span>
+
+daily <span class="op">&lt;-</span> df <span class="op">|&gt;</span>
+  <span class="fn">group_by</span>(date, year) <span class="op">|&gt;</span>
+  <span class="fn">summarise</span>(<span class="fn">across</span>(<span class="fn">c</span>(GPP, RECO, NEE), mean, <span class="na">na.rm =</span> <span class="kw">TRUE</span>), <span class="na">.groups =</span> <span class="st">"drop"</span>) <span class="op">|&gt;</span>
+  <span class="fn">mutate</span>(<span class="fn">across</span>(<span class="fn">c</span>(GPP, RECO, NEE), <span class="op">~</span> .x <span class="op">*</span> UMOL_TO_GC_DAY))
+
+annual <span class="op">&lt;-</span> daily <span class="op">|&gt;</span>
+  <span class="fn">group_by</span>(year) <span class="op">|&gt;</span>
+  <span class="fn">summarise</span>(
+    <span class="na">GPP_gC  =</span> <span class="fn">round</span>(<span class="fn">sum</span>(GPP,  <span class="na">na.rm =</span> <span class="kw">TRUE</span>), <span class="nb">1</span>),
+    <span class="na">RECO_gC =</span> <span class="fn">round</span>(<span class="fn">sum</span>(RECO, <span class="na">na.rm =</span> <span class="kw">TRUE</span>), <span class="nb">1</span>),
+    <span class="na">NEE_gC  =</span> <span class="fn">round</span>(<span class="fn">sum</span>(NEE,  <span class="na">na.rm =</span> <span class="kw">TRUE</span>), <span class="nb">1</span>),
+    <span class="na">CUE     =</span> <span class="fn">round</span>(GPP_gC <span class="op">/</span> RECO_gC, <span class="nb">3</span>),
+    <span class="na">Balance =</span> <span class="fn">if_else</span>(NEE_gC <span class="op">&lt;</span> <span class="nb">0</span>, <span class="st">"sink"</span>, <span class="st">"source"</span>),
+    <span class="na">.groups =</span> <span class="st">"drop"</span>
+  )
+
+<span class="fn">knitr::kable</span>(annual, <span class="na">caption =</span> <span class="st">"Annual carbon budget (gC m⁻² yr⁻¹)"</span>)</code></pre>
+    </div>
+  </section>
+
+  <hr>
+
+  <!-- ── Time-series plot ── -->
+  <section>
+    <h2 id="timeseries">5 · Time-series plot</h2>
+
+    <div class="code-block-wrap">
+      <div class="chunk-label">r  flux-plot</div>
+      <pre><code><span class="cm"># SWELL (if present)</span>
+p_swell <span class="op">&lt;-</span> <span class="kw">NULL</span>
+<span class="kw">if</span> (<span class="st">"SWELL"</span> <span class="op">%in%</span> <span class="fn">names</span>(df)) {
+  swell_d <span class="op">&lt;-</span> df <span class="op">|&gt;</span>
+    <span class="fn">group_by</span>(date) <span class="op">|&gt;</span>
+    <span class="fn">summarise</span>(<span class="na">SWELL =</span> <span class="fn">mean</span>(SWELL, <span class="na">na.rm =</span> <span class="kw">TRUE</span>), <span class="na">.groups =</span> <span class="st">"drop"</span>)
+
+  p_swell <span class="op">&lt;-</span> <span class="fn">ggplot</span>(swell_d, <span class="fn">aes</span>(date, SWELL)) <span class="op">+</span>
+    <span class="fn">geom_ribbon</span>(<span class="fn">aes</span>(<span class="na">ymin =</span> <span class="nb">0</span>, <span class="na">ymax =</span> SWELL), <span class="na">fill =</span> <span class="st">"#facc15"</span>, <span class="na">alpha =</span> <span class="nb">0.3</span>) <span class="op">+</span>
+    <span class="fn">geom_line</span>(<span class="na">colour =</span> <span class="st">"#ca8a04"</span>, <span class="na">linewidth =</span> <span class="nb">0.7</span>) <span class="op">+</span>
+    <span class="fn">scale_y_continuous</span>(<span class="na">limits =</span> <span class="fn">c</span>(<span class="nb">0</span>, <span class="nb">1</span>)) <span class="op">+</span>
+    <span class="fn">labs</span>(<span class="na">y =</span> <span class="st">"SWELL (EVI)"</span>, <span class="na">x =</span> <span class="kw">NULL</span>) <span class="op">+</span>
+    <span class="fn">theme_minimal</span>(<span class="na">base_size =</span> <span class="nb">10</span>) <span class="op">+</span>
+    <span class="fn">theme</span>(<span class="na">panel.grid.minor =</span> <span class="fn">element_blank</span>(),
+          <span class="na">axis.text.x =</span> <span class="fn">element_blank</span>())
+}
+
+<span class="cm"># Flux ribbons</span>
+p_flux <span class="op">&lt;-</span> daily <span class="op">|&gt;</span>
+  <span class="fn">pivot_longer</span>(<span class="fn">c</span>(GPP, RECO, NEE)) <span class="op">|&gt;</span>
+  <span class="fn">ggplot</span>(<span class="fn">aes</span>(date, value, <span class="na">colour =</span> name)) <span class="op">+</span>
+  <span class="fn">geom_line</span>(<span class="na">linewidth =</span> <span class="nb">0.8</span>) <span class="op">+</span>
+  <span class="fn">geom_hline</span>(<span class="na">yintercept =</span> <span class="nb">0</span>, <span class="na">linetype =</span> <span class="st">"dashed"</span>, <span class="na">colour =</span> <span class="st">"#475569"</span>) <span class="op">+</span>
+  <span class="fn">scale_colour_manual</span>(<span class="na">values =</span> <span class="fn">c</span>(<span class="na">GPP =</span> <span class="st">"#4ade80"</span>, <span class="na">RECO =</span> <span class="st">"#f87171"</span>, <span class="na">NEE =</span> <span class="st">"#60a5fa"</span>)) <span class="op">+</span>
+  <span class="fn">labs</span>(<span class="na">y =</span> <span class="st">"gC m⁻² day⁻¹"</span>, <span class="na">x =</span> <span class="kw">NULL</span>, <span class="na">colour =</span> <span class="kw">NULL</span>) <span class="op">+</span>
+  <span class="fn">theme_minimal</span>(<span class="na">base_size =</span> <span class="nb">10</span>) <span class="op">+</span>
+  <span class="fn">theme</span>(<span class="na">panel.grid.minor =</span> <span class="fn">element_blank</span>(),
+        <span class="na">legend.position =</span> <span class="st">"top"</span>)
+
+<span class="kw">if</span> (<span class="op">!</span><span class="fn">is.null</span>(p_swell)) {
+  p_swell <span class="op">/</span> p_flux <span class="op">+</span> <span class="fn">plot_annotation</span>(
+    <span class="na">title =</span> <span class="st">"BREATH simulation — northern Apennines forest"</span>,
+    <span class="na">theme =</span> <span class="fn">theme</span>(<span class="na">plot.title =</span> <span class="fn">element_text</span>(<span class="na">face =</span> <span class="st">"bold"</span>, <span class="na">size =</span> <span class="nb">13</span>))
+  )
+} <span class="kw">else</span> {
+  p_flux
+}</code></pre>
+    </div>
+  </section>
+
+  <hr>
+
+  <!-- ── Seasonal ── -->
+  <section>
+    <h2 id="seasonal">6 · Seasonal diagnostics</h2>
+
+    <div class="code-block-wrap">
+      <div class="chunk-label">r  seasonal</div>
+      <pre><code>seasons <span class="op">&lt;-</span> df <span class="op">|&gt;</span>
+  <span class="fn">mutate</span>(<span class="na">season =</span> <span class="fn">case_when</span>(
+    month <span class="op">%in%</span> <span class="fn">c</span>(<span class="nb">12</span>, <span class="nb">1</span>, <span class="nb">2</span>) <span class="op">~</span> <span class="st">"DJF"</span>,
+    month <span class="op">%in%</span> <span class="nb">3</span><span class="op">:</span><span class="nb">5</span>          <span class="op">~</span> <span class="st">"MAM"</span>,
+    month <span class="op">%in%</span> <span class="nb">6</span><span class="op">:</span><span class="nb">8</span>          <span class="op">~</span> <span class="st">"JJA"</span>,
+    <span class="kw">TRUE</span>                    <span class="op">~</span> <span class="st">"SON"</span>
+  )) <span class="op">|&gt;</span>
+  <span class="fn">group_by</span>(year, season) <span class="op">|&gt;</span>
+  <span class="fn">summarise</span>(
+    <span class="na">T_mean   =</span> <span class="fn">round</span>(<span class="fn">mean</span>(t,    <span class="na">na.rm =</span> <span class="kw">TRUE</span>), <span class="nb">1</span>),
+    <span class="na">P_total  =</span> <span class="fn">round</span>(<span class="fn">sum</span>(p,     <span class="na">na.rm =</span> <span class="kw">TRUE</span>) <span class="op">*</span> <span class="nb">24</span>, <span class="nb">0</span>),  <span class="cm"># mm/h → mm/day, summed</span>
+    <span class="na">GPP_mean =</span> <span class="fn">round</span>(<span class="fn">mean</span>(GPP,  <span class="na">na.rm =</span> <span class="kw">TRUE</span>), <span class="nb">3</span>),
+    <span class="na">NEE_mean =</span> <span class="fn">round</span>(<span class="fn">mean</span>(NEE,  <span class="na">na.rm =</span> <span class="kw">TRUE</span>), <span class="nb">3</span>),
+    <span class="na">.groups =</span> <span class="st">"drop"</span>
+  ) <span class="op">|&gt;</span>
+  <span class="fn">mutate</span>(<span class="na">season =</span> <span class="fn">factor</span>(season, <span class="na">levels =</span> <span class="fn">c</span>(<span class="st">"DJF"</span>,<span class="st">"MAM"</span>,<span class="st">"JJA"</span>,<span class="st">"SON"</span>))) <span class="op">|&gt;</span>
+  <span class="fn">arrange</span>(year, season)
+
+<span class="fn">knitr::kable</span>(seasons, <span class="na">caption =</span> <span class="st">"Seasonal diagnostics"</span>)</code></pre>
+    </div>
+  </section>
+
+  <hr>
+
+  <!-- ── Phenology ── -->
+  <section>
+    <h2 id="phenology">7 · Phenological dates</h2>
+    <p>
+      When the <code>Circadian</code> or <code>Pheno</code> model variant is used, the output includes a
+      <code>phenophase</code> column that can be used to extract phenological dates (DOY).
+    </p>
+
+    <div class="code-block-wrap">
+      <div class="chunk-label">r  phenology</div>
+      <pre><code>pheno_col <span class="op">&lt;-</span> <span class="fn">grep</span>(<span class="st">"phenophase"</span>, <span class="fn">names</span>(df), <span class="na">ignore.case =</span> <span class="kw">TRUE</span>, <span class="na">value =</span> <span class="kw">TRUE</span>)[<span class="nb">1</span>]
+
+<span class="kw">if</span> (<span class="op">!</span><span class="fn">is.na</span>(pheno_col)) {
+  pheno <span class="op">&lt;-</span> df <span class="op">|&gt;</span>
+    <span class="fn">rename</span>(<span class="na">phase =</span> <span class="fn">all_of</span>(pheno_col)) <span class="op">|&gt;</span>
+    <span class="fn">arrange</span>(date) <span class="op">|&gt;</span>
+    <span class="fn">group_by</span>(year) <span class="op">|&gt;</span>
+    <span class="fn">mutate</span>(<span class="na">prev_phase =</span> <span class="fn">lag</span>(phase, <span class="na">default =</span> <span class="st">""</span>)) <span class="op">|&gt;</span>
+    <span class="fn">filter</span>(phase <span class="op">!=</span> prev_phase) <span class="op">|&gt;</span>
+    <span class="fn">summarise</span>(
+      <span class="na">SGS =</span> doy[<span class="fn">grepl</span>(<span class="st">"Growth"</span>,    phase, <span class="na">ignore.case =</span> <span class="kw">TRUE</span>)][<span class="nb">1</span>],
+      <span class="na">MAT =</span> doy[<span class="fn">grepl</span>(<span class="st">"Greendown"</span>, phase, <span class="na">ignore.case =</span> <span class="kw">TRUE</span>)][<span class="nb">1</span>],
+      <span class="na">SEN =</span> doy[<span class="fn">grepl</span>(<span class="st">"Senesc"</span>,    phase, <span class="na">ignore.case =</span> <span class="kw">TRUE</span>)][<span class="nb">1</span>],
+      <span class="na">EGS =</span> doy[<span class="fn">grepl</span>(<span class="st">"Dorm|Induct"</span>, phase, <span class="na">ignore.case =</span> <span class="kw">TRUE</span>)][<span class="nb">1</span>],
+      <span class="na">.groups =</span> <span class="st">"drop"</span>
+    ) <span class="op">|&gt;</span>
+    <span class="fn">mutate</span>(<span class="na">GSL =</span> EGS <span class="op">-</span> SGS)
+
+  <span class="fn">knitr::kable</span>(pheno, <span class="na">caption =</span> <span class="st">"Phenological dates (DOY)"</span>)
+} <span class="kw">else</span> {
+  <span class="fn">cat</span>(<span class="st">"No phenophase column in output — run with modelVariant='Pheno' or 'Circadian'.\n"</span>)
+}</code></pre>
+    </div>
+  </section>
+
+  <hr>
+
+  <!-- ── Grid run ── -->
+  <section>
+    <h2 id="grid">8 · Multi-pixel grid run</h2>
+
+    <div class="code-block-wrap">
+      <div class="chunk-label">r  grid-run  <span style="color:#e5c07b;font-style:italic;">(eval=FALSE)</span></div>
+      <pre><code><span class="cm"># 3 × 3 grid centred on the pixel, 0.1° step</span>
+lats   <span class="op">&lt;-</span> <span class="fn">c</span>(<span class="nb">44.08</span>, <span class="nb">44.18</span>, <span class="nb">44.28</span>)
+lons   <span class="op">&lt;-</span> <span class="fn">c</span>(<span class="nb">10.66</span>, <span class="nb">10.76</span>, <span class="nb">10.86</span>)
+pixels <span class="op">&lt;-</span> <span class="fn">as.vector</span>(<span class="fn">outer</span>(lats, lons, <span class="kw">function</span>(la, lo) <span class="fn">sprintf</span>(<span class="st">"%.4f_%.4f"</span>, la, lo)))
+
+grid_payload <span class="op">&lt;-</span> <span class="fn">list</span>(
+  settings <span class="op">=</span> <span class="fn">list</span>(
+    <span class="na">pixelsRun           =</span> <span class="fn">as.list</span>(pixels),
+    <span class="na">startYear           =</span> <span class="nb">2023L</span>,
+    <span class="na">endYear             =</span> <span class="nb">2023L</span>,
+    <span class="na">inputWeather        =</span> <span class="st">"hourly"</span>,
+    <span class="na">modelVariant        =</span> <span class="st">"Circadian"</span>,
+    <span class="na">calibration         =</span> <span class="kw">FALSE</span>,
+    <span class="na">parametersDataFile  =</span> <span class="st">"photothermalRequirements.csv"</span>,
+    <span class="na">simplexes           =</span> <span class="nb">3L</span>,
+    <span class="na">iterations          =</span> <span class="nb">200L</span>,
+    <span class="na">calibrationVariable =</span> <span class="st">"Phenology"</span>
+  )
+)
+
+<span class="fn">request</span>(<span class="fn">paste0</span>(BASE_URL, <span class="st">"/api/breath/run"</span>)) <span class="op">|&gt;</span>
+  <span class="fn">req_method</span>(<span class="st">"POST"</span>) <span class="op">|&gt;</span>
+  <span class="fn">req_body_json</span>(grid_payload) <span class="op">|&gt;</span>
+  <span class="fn">req_perform</span>()
+
+<span class="fn">wait_for_completion</span>(BASE_URL)
+
+csv_grid <span class="op">&lt;-</span> <span class="fn">request</span>(<span class="fn">paste0</span>(BASE_URL, <span class="st">"/api/results/latest"</span>)) <span class="op">|&gt;</span>
+  <span class="fn">req_perform</span>() <span class="op">|&gt;</span>
+  <span class="fn">resp_body_string</span>()
+
+df_grid <span class="op">&lt;-</span> <span class="fn">read_csv</span>(csv_grid, <span class="na">show_col_types =</span> <span class="kw">FALSE</span>)
+
+<span class="cm"># Annual NEE per pixel (gC m⁻² yr⁻¹)</span>
+nee_px <span class="op">&lt;-</span> df_grid <span class="op">|&gt;</span>
+  <span class="fn">group_by</span>(pixel) <span class="op">|&gt;</span>
+  <span class="fn">summarise</span>(<span class="na">NEE_annual =</span> <span class="fn">round</span>(<span class="fn">mean</span>(NEE, <span class="na">na.rm =</span> <span class="kw">TRUE</span>) <span class="op">*</span> <span class="nb">86400</span> <span class="op">*</span> <span class="nb">365</span> <span class="op">*</span> <span class="nb">12.01e-6</span>, <span class="nb">1</span>)) <span class="op">|&gt;</span>
+  <span class="fn">arrange</span>(NEE_annual)
+
+<span class="fn">knitr::kable</span>(nee_px)</code></pre>
+    </div>
+  </section>
+
+  <hr>
+
+  <!-- ── Overrides ── -->
+  <section>
+    <h2 id="overrides">9 · Parameter overrides</h2>
+    <p>
+      Override any internal model parameter by passing a <code>parameterOverrides</code> map.
+      Keys follow the <code>className_propertyName</code> convention.
+    </p>
+
+    <div class="code-block-wrap">
+      <div class="chunk-label">r  overrides  <span style="color:#e5c07b;font-style:italic;">(eval=FALSE)</span></div>
+      <pre><code>tuned_payload <span class="op">&lt;-</span> <span class="fn">list</span>(
+  settings <span class="op">=</span> <span class="fn">list</span>(
+    <span class="na">pixelsRun           =</span> <span class="fn">list</span>(pixel),
+    <span class="na">startYear           =</span> <span class="nb">2023L</span>,
+    <span class="na">endYear             =</span> <span class="nb">2023L</span>,
+    <span class="na">inputWeather        =</span> <span class="st">"hourly"</span>,
+    <span class="na">modelVariant        =</span> <span class="st">"Circadian"</span>,
+    <span class="na">calibration         =</span> <span class="kw">FALSE</span>,
+    <span class="na">parametersDataFile  =</span> <span class="st">"photothermalRequirements.csv"</span>,
+    <span class="na">simplexes           =</span> <span class="nb">3L</span>,
+    <span class="na">iterations          =</span> <span class="nb">200L</span>,
+    <span class="na">calibrationVariable =</span> <span class="st">"Phenology"</span>
+  ),
+  parameterOverrides <span class="op">=</span> <span class="fn">list</span>(
+    <span class="na">parPhotosynthesis_maximumQuantumYieldOver =</span> <span class="nb">0.08</span>,  <span class="cm"># α overstory (default 0.06)</span>
+    <span class="na">parPhotosynthesis_halfSaturationTree      =</span> <span class="nb">350</span>,   <span class="cm"># k½ PAR (default 400)</span>
+    <span class="na">parRespiration_referenceRespiration       =</span> <span class="nb">1.2</span>    <span class="cm"># R base (default 1.5)</span>
+  )
+)
+
+<span class="fn">request</span>(<span class="fn">paste0</span>(BASE_URL, <span class="st">"/api/breath/run"</span>)) <span class="op">|&gt;</span>
+  <span class="fn">req_method</span>(<span class="st">"POST"</span>) <span class="op">|&gt;</span>
+  <span class="fn">req_body_json</span>(tuned_payload) <span class="op">|&gt;</span>
+  <span class="fn">req_perform</span>()
+
+<span class="fn">wait_for_completion</span>(BASE_URL)</code></pre>
+    </div>
+  </section>
+
+  <hr>
+
+  <!-- ── Session info ── -->
+  <section>
+    <h2 id="session">Session info</h2>
+
+    <div class="code-block-wrap">
+      <div class="chunk-label">r  session</div>
+      <pre><code><span class="fn">sessionInfo</span>()</code></pre>
+    </div>
+  </section>
+
+</main>
+
+<script>
+// Highlight active TOC link on scroll
+(function () {
+  var links = document.querySelectorAll('#toc a');
+  var sections = Array.from(links).map(function (a) {
+    return document.querySelector(a.getAttribute('href'));
+  });
+
+  function onScroll() {
+    var scrollY = window.scrollY + 80;
+    var active = 0;
+    sections.forEach(function (sec, i) {
+      if (sec && sec.offsetTop <= scrollY) active = i;
+    });
+    links.forEach(function (a) { a.classList.remove('active'); });
+    links[active].classList.add('active');
+  }
+
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+})();
+</script>
+
+</body>
+</html>
