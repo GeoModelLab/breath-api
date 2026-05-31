@@ -195,6 +195,23 @@ window.ResultsPanel = defineComponent({
           </div>
         </div>
 
+        <!-- ── Phase flux chips ── -->
+        <div v-if="phaseFluxStats" class="phase-flux-wrap">
+          <div class="phase-flux-hd" @click="phaseFluxOpen=!phaseFluxOpen">
+            <span>🌱 Mean fluxes by phenological phase (gC m⁻² yr⁻¹)</span>
+            <span class="toggle-arrow">{{ phaseFluxOpen ? '▲' : '▼' }}</span>
+          </div>
+          <div v-show="phaseFluxOpen" class="phase-flux-body">
+            <div v-for="ph in phaseFluxStats" :key="ph.label" class="phase-flux-row"
+                 :style="{borderLeftColor: ph.color}">
+              <span class="pfr-label" :style="{color: ph.color}">{{ ph.label }}</span>
+              <span class="pfr-kv"><span class="pfr-k">GPP</span> <span class="pfr-v">{{ ph.gpp }}</span></span>
+              <span class="pfr-kv"><span class="pfr-k">RECO</span> <span class="pfr-v">{{ ph.reco }}</span></span>
+              <span class="pfr-kv"><span class="pfr-k" :style="{color: ph.nee<0?'#4ade80':'#f87171'}">NEE</span>
+                <span class="pfr-v" :style="{color: ph.nee<0?'#4ade80':'#f87171'}">{{ ph.nee }}</span></span>
+            </div>
+          </div>
+        </div>
         <!-- ── Scaler KPIs ── -->
         <div v-if="healthStats" class="scaler-kpi-wrap">
           <div class="scaler-kpi-hd" @click="healthOpen=!healthOpen">
@@ -329,8 +346,7 @@ window.ResultsPanel = defineComponent({
             <button :class="['agg-btn', aggMode==='daily'  && 'active']" @click="aggMode='daily'">Day</button>
             <button :class="['agg-btn', aggMode==='hourly' && 'active']" @click="aggMode='hourly'">Hr</button>
           </div>
-          <a href="/api/results/latest" :download="csvFilename"
-             class="btn-outline btn-sm" style="margin-left:4px;text-decoration:none">⬇ CSV</a>
+          <button class="btn-outline btn-sm" style="margin-left:4px" @click="downloadCsv" :disabled="!_rawCsv">⬇ CSV</button>
           <button class="chart-zoom-reset" @click="resetAllZoom" title="Reset zoom">⤢</button>
           <!-- 3D toggle -->
           <button :class="['agg-btn', show3D && 'active']" @click="toggle3D" title="3D surface (DOY × Hour)">🌐 3D</button>
@@ -441,7 +457,9 @@ window.ResultsPanel = defineComponent({
       varTab:         'main',
       locationName:   '',
       healthOpen:     true,
+      phaseFluxOpen:  true,
       healthStats:    null,
+      _rawCsv:        '',
       MONTH_NAMES:    ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
     }
   },
@@ -570,6 +588,47 @@ window.ResultsPanel = defineComponent({
           year: yr, sgs: m.sgs, mat: m.mat, sen: m.sen, egs: m.egs,
           gsl: (m.sgs && m.egs) ? m.egs - m.sgs : null,
         }))
+    },
+
+    phaseFluxStats() {
+      if (!this.phenoMetrics.length || !this.daily.length) return null
+      // Phases: dormancy (EGS→SGS next year), growth (SGS→MAT), greendown (MAT→SEN), senescence (SEN→EGS)
+      const acc = {
+        growth:     { gpp:0, reco:0, nee:0, n:0 },
+        greendown:  { gpp:0, reco:0, nee:0, n:0 },
+        senescence: { gpp:0, reco:0, nee:0, n:0 },
+        dormancy:   { gpp:0, reco:0, nee:0, n:0 },
+      }
+      const toGC = (sum, n) => n ? Math.round(sum / n * 86400 * 12.01 / 1e6) : 0
+      const phaseFor = (yr, doy) => {
+        const m = this.phenoMetrics.find(p => p.year == yr)
+        if (!m) return null
+        if (m.sgs && m.mat && doy >= m.sgs && doy < m.mat) return 'growth'
+        if (m.mat && m.sen && doy >= m.mat && doy < m.sen) return 'greendown'
+        if (m.sen && m.egs && doy >= m.sen && doy < m.egs) return 'senescence'
+        if (m.sgs) return 'dormancy'
+        return null
+      }
+      for (const r of this.daily) {
+        if (!r.date) continue
+        const yr = r.date.slice(0,4)
+        const doy = r.doy ?? (() => {
+          const d = new Date(r.date); const s = new Date(d.getFullYear(),0,0)
+          return Math.floor((d-s)/86400000)
+        })()
+        const ph = phaseFor(yr, doy)
+        if (!ph) continue
+        const g = r.GPP ?? r.gpp ?? 0
+        const rc = r.RECO ?? r.reco ?? 0
+        const n = r.NEE ?? r.nee ?? 0
+        acc[ph].gpp  += g;  acc[ph].reco += rc; acc[ph].nee += n; acc[ph].n++
+      }
+      return [
+        { label: 'Growth',     color: '#4ade80', gpp: toGC(acc.growth.gpp,    acc.growth.n),    reco: toGC(acc.growth.reco,    acc.growth.n),    nee: toGC(acc.growth.nee,    acc.growth.n),    n: acc.growth.n },
+        { label: 'Greendown',  color: '#facc15', gpp: toGC(acc.greendown.gpp, acc.greendown.n), reco: toGC(acc.greendown.reco, acc.greendown.n), nee: toGC(acc.greendown.nee, acc.greendown.n), n: acc.greendown.n },
+        { label: 'Senescence', color: '#f97316', gpp: toGC(acc.senescence.gpp,acc.senescence.n),reco: toGC(acc.senescence.reco,acc.senescence.n),nee: toGC(acc.senescence.nee,acc.senescence.n),n: acc.senescence.n },
+        { label: 'Dormancy',   color: '#94a3b8', gpp: toGC(acc.dormancy.gpp,  acc.dormancy.n),  reco: toGC(acc.dormancy.reco,  acc.dormancy.n),  nee: toGC(acc.dormancy.nee,  acc.dormancy.n),  n: acc.dormancy.n },
+      ].filter(p => p.n > 0)
     },
 
     climateStats() {
@@ -718,6 +777,16 @@ window.ResultsPanel = defineComponent({
 
   methods: {
     fmt(n) { return n.toLocaleString() },
+    downloadCsv() {
+      if (!this._rawCsv) return
+      const blob = new Blob([this._rawCsv], { type: 'text/csv' })
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href     = url
+      a.download = this.csvFilename
+      a.click()
+      URL.revokeObjectURL(url)
+    },
     doyToLabel(year, doy) {
       if (doy == null) return '—'
       const d = new Date(parseInt(year), 0, doy)
@@ -1239,6 +1308,7 @@ window.ResultsPanel = defineComponent({
     },
 
     loadCsv(csv) {
+      this._rawCsv = csv
       const lines = csv.trim().split('\n')
       if (lines.length < 2) return
       const hdr     = lines[0].split(',').map(h=>h.trim())
