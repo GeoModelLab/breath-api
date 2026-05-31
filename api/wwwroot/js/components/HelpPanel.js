@@ -230,8 +230,8 @@ csv = requests.get(f"{BASE}/api/results/latest").text
 df  = pd.read_csv(io.StringIO(csv), parse_dates=["date"])</pre>
 
             <div class="help-tip" style="margin-top:8px">
-              📓 Full examples (single pixel, grid, parameter overrides) are in the repository:<br>
-              <a href="https://github.com/GeoModelLab/breath-api/blob/main/examples/breath_api_demo.ipynb" target="_blank" style="color:#3b82f6">Python Jupyter notebook ↗</a>
+              📓 Full examples (single pixel, grid, parameter overrides, custom weather):<br>
+              <a href="https://nbviewer.org/github/GeoModelLab/breath-api/blob/main/examples/breath_api_demo.ipynb" target="_blank" style="color:#3b82f6">Python notebook (nbviewer) ↗</a>
               &nbsp;·&nbsp;
               <a href="https://github.com/GeoModelLab/breath-api/blob/main/examples/breath_api_demo.Rmd" target="_blank" style="color:#3b82f6">R Markdown vignette ↗</a>
             </div>

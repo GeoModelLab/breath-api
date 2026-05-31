@@ -10,6 +10,13 @@ ecodormancy → growth → greendown → senescence).
 
 Live demo: **https://breath-api-thkm.onrender.com**
 
+### Examples
+
+| Format | Link |
+|--------|------|
+| Python notebook | [![nbviewer](https://raw.githubusercontent.com/jupyter/design/master/logos/Badges/nbviewer_badge.svg)](https://nbviewer.org/github/GeoModelLab/breath-api/blob/main/examples/breath_api_demo.ipynb) |
+| R vignette | [View on GitHub](https://github.com/GeoModelLab/breath-api/blob/main/examples/breath_api_demo.Rmd) · render locally with `rmarkdown::render("examples/breath_api_demo.Rmd")` |
+
 ---
 
 ## Repository layout
