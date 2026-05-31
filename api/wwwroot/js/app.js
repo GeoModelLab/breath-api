@@ -95,6 +95,19 @@ createApp({
               <span>{{ paramsOpen ? '▲' : '▼' }}</span>
             </button>
             <div v-show="paramsOpen" class="params-body">
+              <div class="rerun-settings">
+                <label class="rerun-lbl">From
+                  <input type="number" class="rerun-yr" v-model.number="rerunStartYear" min="2000" :max="rerunEndYear" />
+                </label>
+                <label class="rerun-lbl">To
+                  <input type="number" class="rerun-yr" v-model.number="rerunEndYear" :min="rerunStartYear" :max="currentYear" />
+                </label>
+                <label class="rerun-lbl">Variant
+                  <select class="rerun-sel" v-model="rerunVariant">
+                    <option>Baseline</option><option>Pheno</option><option>Circadian</option>
+                  </select>
+                </label>
+              </div>
               <ParameterPanel ref="params" @apply="onApply" />
             </div>
           </div>
@@ -117,6 +130,10 @@ createApp({
       appState:       'selecting',
       paramsOpen:     false,
       lastPayload:    null,
+      rerunStartYear: new Date().getFullYear() - 3,
+      rerunEndYear:   new Date().getFullYear(),
+      rerunVariant:   'Circadian',
+      currentYear:    new Date().getFullYear(),
       lastCsvText:    null,
       helpOpen:       !localStorage.getItem('breath_help_seen'),
       selectedPixels: [],
@@ -195,7 +212,10 @@ createApp({
         }
       }
 
-      this.lastPayload = payload
+      this.lastPayload    = payload
+      this.rerunStartYear = payload.settings?.startYear ?? this.rerunStartYear
+      this.rerunEndYear   = payload.settings?.endYear   ?? this.rerunEndYear
+      this.rerunVariant   = payload.settings?.modelVariant ?? this.rerunVariant
       this._logLines = ['▶ Starting BREATH model…']
       this.$refs.log?.clear()
       this.$refs.log?.append('▶ Starting BREATH model…')
@@ -351,7 +371,16 @@ createApp({
 
     async onApply(paramValues) {
       if (!this.lastPayload) return
-      await this.onRun({ ...this.lastPayload, parameterOverrides: paramValues })
+      await this.onRun({
+        ...this.lastPayload,
+        settings: {
+          ...this.lastPayload.settings,
+          startYear:    this.rerunStartYear,
+          endYear:      this.rerunEndYear,
+          modelVariant: this.rerunVariant,
+        },
+        parameterOverrides: paramValues,
+      })
     },
   },
 

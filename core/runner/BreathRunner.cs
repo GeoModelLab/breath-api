@@ -299,6 +299,15 @@ namespace runner
                     }
 
                     // ── Forward run ───────────────────────────────────────────────
+                    // Ensure ALL nameParam values (including UI overrides) reach oneShot.
+                    // When not calibrating, paramCalibValue is empty and param_outCalibration
+                    // is also empty, so the model would silently use hardcoded constructor
+                    // defaults instead of the CSV defaults + user overrides.
+                    foreach (var (name, p) in optimizer.nameParam)
+                    {
+                        if (!paramCalibValue.ContainsKey(name))
+                            paramCalibValue[name] = p.value;
+                    }
                     optimizer.isSWELLCalibrated = true;
                     optimizer.oneShot(paramCalibValue, out Dictionary<DateTime, output> dateOutputs);
                     _log?.Invoke($"[{DateTime.Now:HH:mm:ss}] ✅ Pixel {pixelPrefix} done.");
