@@ -197,14 +197,12 @@ window.ResultsPanel = defineComponent({
 
         <!-- ── Plant health radar ── -->
         <div v-if="healthStats" class="health-radar-wrap">
-          <div class="health-radar-hd" @click="healthOpen=!healthOpen">
+          <div class="health-radar-hd" @click="toggleHealth">
             <span>🌿 Plant Health</span>
             <span class="toggle-arrow">{{ healthOpen ? '▲' : '▼' }}</span>
           </div>
           <div v-show="healthOpen" class="health-radar-body">
-            <div style="position:relative;height:180px;max-width:320px;margin:0 auto">
-              <canvas ref="radarCanvas"></canvas>
-            </div>
+            <canvas ref="radarCanvas" width="300" height="180" style="display:block;margin:0 auto"></canvas>
             <div class="health-legend">
               <span v-for="s in healthStats.scores" :key="s.label" class="health-chip"
                     :style="{borderColor: s.color}">
@@ -445,6 +443,7 @@ window.ResultsPanel = defineComponent({
       varTab:         'main',
       locationName:   '',
       healthOpen:     true,
+      healthStats:    null,
       MONTH_NAMES:    ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
     }
   },
@@ -683,39 +682,6 @@ window.ResultsPanel = defineComponent({
         })
     },
 
-    healthStats() {
-      if (!this.hourly.length) return null
-      const AXES = [
-        { key: 'tscale',      label: 'T scale',     color: '#fbbf24', higher_is_better: true  },
-        { key: 'parscale',    label: 'PAR scale',   color: '#fef08a', higher_is_better: true  },
-        { key: 'vpdscale',    label: 'VPD scale',   color: '#c084fc', higher_is_better: true  },
-        { key: 'waterstress', label: 'Water',       color: '#818cf8', higher_is_better: false },
-      ]
-      const colMap = {}
-      for (const ax of AXES) {
-        const found = this.numericCols.find(c => c.toLowerCase() === ax.key)
-        if (found) colMap[ax.key] = found
-      }
-      if (!Object.keys(colMap).length) return null
-      const sums = {}, cnts = {}
-      for (const ax of AXES) { sums[ax.key] = 0; cnts[ax.key] = 0 }
-      for (const r of this.hourly) {
-        for (const ax of AXES) {
-          const v = colMap[ax.key] ? r[colMap[ax.key]] : null
-          if (v != null && isFinite(v)) { sums[ax.key] += v; cnts[ax.key]++ }
-        }
-      }
-      const scores = AXES
-        .filter(ax => cnts[ax.key] > 0)
-        .map(ax => {
-          const mean = sums[ax.key] / cnts[ax.key]
-          // waterstress: 0=no stress, 1=full stress → invert for radar (1=healthy)
-          const val  = ax.higher_is_better ? mean : (1 - mean)
-          return { label: ax.label, color: ax.color, val: Math.max(0, Math.min(1, val)), pct: Math.round(val * 100) }
-        })
-      if (!scores.length) return null
-      return { scores }
-    },
   },
 
   watch: {
@@ -725,8 +691,6 @@ window.ResultsPanel = defineComponent({
     dateTo()   { if (!this._settingFromLoad) nextTick(() => this.rebuild()) },
     climateStats(v) { if (v) nextTick(() => this.buildClimoChart()) },
     climoOpen(v)    { if (v) nextTick(() => this.buildClimoChart()) },
-    healthStats(v)  { if (v && this.healthOpen) nextTick(() => this.buildRadarChart()) },
-    healthOpen(v)   { if (v && this.healthStats) nextTick(() => this.buildRadarChart()) },
   },
 
   mounted() {
@@ -1220,10 +1184,48 @@ window.ResultsPanel = defineComponent({
       })
     },
 
+    _computeHealth(rows, cols) {
+      const AXES = [
+        { key: 'tscale',      label: 'T scale',   color: '#fbbf24', invert: false },
+        { key: 'parscale',    label: 'PAR scale', color: '#fef08a', invert: false },
+        { key: 'vpdscale',    label: 'VPD scale', color: '#c084fc', invert: false },
+        { key: 'waterstress', label: 'Water',     color: '#818cf8', invert: true  },
+      ]
+      const colMap = {}
+      for (const ax of AXES) {
+        const found = cols.find(c => c.toLowerCase() === ax.key)
+        if (found) colMap[ax.key] = found
+      }
+      if (!Object.keys(colMap).length) return null
+      const sums = {}, cnts = {}
+      for (const ax of AXES) { sums[ax.key] = 0; cnts[ax.key] = 0 }
+      for (const r of rows) {
+        for (const ax of AXES) {
+          const v = colMap[ax.key] ? r[colMap[ax.key]] : null
+          if (v != null && isFinite(v)) { sums[ax.key] += v; cnts[ax.key]++ }
+        }
+      }
+      const scores = AXES
+        .filter(ax => cnts[ax.key] > 0)
+        .map(ax => {
+          const mean = sums[ax.key] / cnts[ax.key]
+          const val  = ax.invert ? (1 - mean) : mean
+          return { label: ax.label, color: ax.color, val: Math.max(0, Math.min(1, val)), pct: Math.round(val * 100) }
+        })
+      return scores.length ? { scores } : null
+    },
+
+    toggleHealth() {
+      this.healthOpen = !this.healthOpen
+      if (this.healthOpen && this.healthStats && !this.__radarChart) {
+        nextTick(() => this.buildRadarChart())
+      }
+    },
+
     buildRadarChart() {
       const h = this.healthStats
       if (!h || !this.$refs.radarCanvas) return
-      this.__radarChart?.destroy()
+      if (this.__radarChart) { this.__radarChart.destroy(); this.__radarChart = null }
       const labels = h.scores.map(s => s.label)
       const data   = h.scores.map(s => s.val * 100)
       const colors = h.scores.map(s => s.color)
@@ -1243,7 +1245,8 @@ window.ResultsPanel = defineComponent({
           }],
         },
         options: {
-          responsive: true, maintainAspectRatio: false, animation: { duration: 0 },
+          responsive: false,
+          animation: { duration: 0 },
           scales: {
             r: {
               min: 0, max: 100,
@@ -1339,11 +1342,14 @@ window.ResultsPanel = defineComponent({
       this._settingFromLoad = false
       this._rebuilding = false
       // Destroy old charts immediately, build fresh after DOM update
+      this.healthStats = this._computeHealth(rows, [...colSet])
       this._swellChart?.destroy(); this._swellChart = null
       this._fluxChart?.destroy();  this._fluxChart  = null
+      if (this.__radarChart) { this.__radarChart.destroy(); this.__radarChart = null }
       nextTick(() => {
         this.buildSwellChart()
         this.buildFluxChart()
+        if (this.healthStats && this.healthOpen) this.buildRadarChart()
       })
     },
   },
