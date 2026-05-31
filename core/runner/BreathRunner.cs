@@ -98,6 +98,10 @@ namespace runner
                 Directory.CreateDirectory(logsDir);
                 Directory.CreateDirectory(resultsDir);
 
+                // Remove stale combined output so the endpoint never returns a previous run
+                string staleLatest = Path.Combine(resultsDir, "latest_results.csv");
+                if (File.Exists(staleLatest)) File.Delete(staleLatest);
+
                 // Log to file as well as to the streaming delegate
                 string logFile = Path.Combine(logsDir, "breath_log.txt");
                 await File.WriteAllTextAsync(logFile,
@@ -144,7 +148,7 @@ namespace runner
                     double lat = double.Parse(pixel.Split('_')[0], CultureInfo.InvariantCulture);
                     double lon = double.Parse(pixel.Split('_')[1], CultureInfo.InvariantCulture);
 
-                    string pixelPrefix  = $"{lat}_{lon}";
+                    string pixelPrefix  = pixel;   // keep original string to guarantee filename consistency
                     string weatherFile  = Path.Combine(resultsDir, $"{pixelPrefix}_weather.csv");
                     string calibFile    = Path.Combine(resultsDir, $"calibParam_{pixelPrefix}.csv");
 
