@@ -62,7 +62,7 @@ window.HelpPanel = defineComponent({
                 <span class="step-num">3</span>
                 <div>
                   <b>Set the year range</b> (default 2018–2022) and click <b>▶ Run BREATH</b>.<br>
-                  <span class="step-note">Weather is downloaded from NASA POWER and cached — re-running the same location is fast.</span>
+                  <span class="step-note">Weather is downloaded from NASA POWER and cached — re-running the same location is fast. Default range: 2022–2025.</span>
                 </div>
               </div>
               <div class="help-step">

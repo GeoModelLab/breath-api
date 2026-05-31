@@ -491,6 +491,10 @@ h2 {
 }
 .params-toggle:hover { background: #1e293b; color: #94a3b8; }
 .params-body { padding: 10px 14px; background: #0f1117; max-width: 920px; }
+.rerun-settings { display:flex; gap:12px; flex-wrap:wrap; align-items:center; padding:8px 0 10px; border-bottom:1px solid #1e2d44; margin-bottom:10px; }
+.rerun-lbl { display:flex; align-items:center; gap:6px; font-size:11px; color:#64748b; }
+.rerun-yr  { width:68px; background:#1e2d44; border:1px solid #243050; color:#c8d8e8; border-radius:4px; padding:3px 6px; font-size:11px; }
+.rerun-sel { background:#1e2d44; border:1px solid #243050; color:#c8d8e8; border-radius:4px; padding:3px 6px; font-size:11px; }
 
 /* ── Parameter rows ───────────────────────────────────────── */
 .param-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
