@@ -115,8 +115,8 @@ function koppenClassify(annT, tCold, tWarm, annP, pMonthly, tMonthly) {
   let pThresh = summerHeavy ? 2*T + 28 : winterHeavy ? 2*T : 2*T + 14
   pThresh *= 10   // monthly→annual (×12 already factored in above)
 
-  if (P < pThresh / 2) return T < 18 ? 'BSk (Cold steppe)' : 'BSh (Hot steppe)'
-  if (P < pThresh)     return T < 18 ? 'BWk (Cold desert)' : 'BWh (Hot desert)'
+  if (P < pThresh / 2) return T < 18 ? 'BWk (Cold desert)' : 'BWh (Hot desert)'
+  if (P < pThresh)     return T < 18 ? 'BSk (Cold steppe)' : 'BSh (Hot steppe)'
 
   // Tropical
   if (tCold >= 18) {
@@ -127,10 +127,16 @@ function koppenClassify(annT, tCold, tWarm, annP, pMonthly, tMonthly) {
   }
 
   // Temperate / Continental
-  const hasDrySummer = pMonthly.slice(3,9).some((v,i,a)=>v!=null && v < 40 && v < pMonthly[i+9] / 3) ||
-                       Math.min(...pMonthly.slice(3,9).filter(v=>v!=null)) < 30
-  const hasDryWinter = [...pMonthly.slice(0,3), ...pMonthly.slice(9)]
-                         .some((v,i,a) => v != null && v < 10)
+  const summerP    = pMonthly.slice(3,9).filter(v => v != null)
+  const winterP    = [...pMonthly.slice(0,3), ...pMonthly.slice(9)].filter(v => v != null)
+  const minSummerP = summerP.length ? Math.min(...summerP) : Infinity
+  const maxSummerP = summerP.length ? Math.max(...summerP) : 0
+  const maxWinterP = winterP.length ? Math.max(...winterP) : 0
+  const minWinterP = winterP.length ? Math.min(...winterP) : Infinity
+  // Cs: driest summer month < 40 mm AND < 1/3 of wettest winter month
+  const hasDrySummer = minSummerP < 40 && maxWinterP > 0 && minSummerP < maxWinterP / 3
+  // Cw: driest winter month < 1/10 of wettest summer month
+  const hasDryWinter = maxSummerP > 0 && minWinterP < maxSummerP / 10
 
   const hotSummer  = tWarm >= 22
   const warmSummer = tMonthly.filter(v=>v!=null).filter(v=>v>=10).length >= 4
@@ -276,15 +282,15 @@ window.ResultsPanel = defineComponent({
             <tbody>
               <tr v-for="m in phenoMetrics" :key="m.year">
                 <td class="yr-year">{{ m.year }}</td>
-                <td>{{ m.sgs ?? '—' }}</td>
-                <td>{{ m.mat ?? '—' }}</td>
-                <td>{{ m.sen ?? '—' }}</td>
-                <td>{{ m.egs ?? '—' }}</td>
-                <td>{{ m.gsl ?? '—' }}</td>
+                <td>{{ doyToLabel(m.year, m.sgs) }}</td>
+                <td>{{ doyToLabel(m.year, m.mat) }}</td>
+                <td>{{ doyToLabel(m.year, m.sen) }}</td>
+                <td>{{ doyToLabel(m.year, m.egs) }}</td>
+                <td>{{ m.gsl != null ? m.gsl + ' d' : '—' }}</td>
               </tr>
             </tbody>
             <tfoot>
-              <tr class="yr-unit"><td colspan="6">DOY · GSL in days</td></tr>
+              <tr class="yr-unit"><td colspan="6">Calendar dates · GSL = growing season length</td></tr>
             </tfoot>
           </table>
         </div>
@@ -674,6 +680,11 @@ window.ResultsPanel = defineComponent({
 
   methods: {
     fmt(n) { return n.toLocaleString() },
+    doyToLabel(year, doy) {
+      if (doy == null) return '—'
+      const d = new Date(parseInt(year), 0, doy)
+      return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+    },
     clearBrush() { this.dateFrom=''; this.dateTo='' },
     varColor, IS_WEATHER, IS_FLUX,
     isVarOn(col)   { return IS_FLUX(col) ? this.fluxDatasets.includes(col) : this.swellDatasets.includes(col) },
@@ -701,15 +712,19 @@ window.ResultsPanel = defineComponent({
     },
 
     _patchChart(which) {
-      const chart = which === 'swell' ? this._swellChart : this._fluxChart
-      const names = which === 'swell' ? this.swellDatasets : this.fluxDatasets
-      if (!chart) {
+      // Save current zoom before destroying the chart
+      const old = which === 'swell' ? this._swellChart : this._fluxChart
+      let savedMin, savedMax
+      if (old?.scales?.x) { savedMin = old.scales.x.min; savedMax = old.scales.x.max }
+      nextTick(() => {
         if (which === 'swell') this.buildSwellChart()
         else this.buildFluxChart()
-        return
-      }
-      chart.data.datasets = this._makeDatasets(names, which)
-      chart.update('active')
+        // Restore zoom after rebuild
+        if (savedMin != null && savedMax != null && this._hasZoom) {
+          const c = which === 'swell' ? this._swellChart : this._fluxChart
+          try { c?.zoomScale?.('x', { min: savedMin, max: savedMax }, 'none') } catch {}
+        }
+      })
     },
 
     _extractZoomToDates() {

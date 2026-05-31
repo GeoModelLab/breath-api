@@ -7,6 +7,7 @@ const TABS = [
   { id:'model',   icon:'🌿', label:'Model' },
   { id:'results', icon:'📊', label:'Results' },
   { id:'params',  icon:'⚙',  label:'Parameters' },
+  { id:'api',     icon:'🔌', label:'API' },
   { id:'about',   icon:'ℹ',  label:'About' },
 ]
 
@@ -187,6 +188,53 @@ window.HelpPanel = defineComponent({
               The slider sets the value between the calibration min and max. The numeric box to the right is directly editable. Parameters marked <b>x</b> in the CSV are included in MODIS EVI calibration.
             </div>
             <p class="help-p" style="margin-top:8px">Enable <b>Calibrate against MODIS EVI</b> in the control panel to automatically fit marked parameters to MODIS Terra/Aqua 16-day EVI composites from ORNL DAAC.</p>
+          </template>
+
+          <!-- ── API ── -->
+          <template v-if="tab==='api'">
+            <p class="help-p">BREATH exposes a simple REST API. Paste the endpoint into any HTTP client, Python script, or R session.</p>
+
+            <div class="help-kv">
+              <span class="help-k">POST /api/breath/run</span>
+              <span class="help-v">Start a simulation. Returns immediately; poll <code>/api/breath/status</code> for completion.</span>
+              <span class="help-k">GET /api/breath/status</span>
+              <span class="help-v">Returns <code>{"Status":"Running"|"Completed"|"Failed",...}</code>.</span>
+              <span class="help-k">GET /api/results/latest</span>
+              <span class="help-v">Download the most recent result as a CSV (one row per simulated hour).</span>
+              <span class="help-k">GET /api/breath/stream/logs</span>
+              <span class="help-v">Server-Sent Events stream of live log messages during simulation.</span>
+              <span class="help-k">Swagger UI</span>
+              <span class="help-v"><a href="/swagger" target="_blank" style="color:#3b82f6">/swagger ↗</a> — interactive documentation for all endpoints.</span>
+            </div>
+
+            <p class="help-p" style="margin-top:10px"><b>Minimal Python example:</b></p>
+            <pre class="help-code">import requests, time, io, pandas as pd
+
+BASE = "https://breath-api-thkm.onrender.com"
+payload = {"settings": {
+    "pixelsRun": ["44.6813_11.0217"],
+    "startYear": 2022, "endYear": 2024,
+    "inputWeather": "hourly",
+    "modelVariant": "Circadian",
+    "calibration": False,
+    "parametersDataFile": "photothermalRequirements.csv",
+    "simplexes": 3, "iterations": 200,
+    "calibrationVariable": "Phenology"}}
+
+requests.post(f"{BASE}/api/breath/run", json=payload)
+while True:
+    s = requests.get(f"{BASE}/api/breath/status").json()["Status"]
+    if s == "Completed": break
+    time.sleep(10)
+csv = requests.get(f"{BASE}/api/results/latest").text
+df  = pd.read_csv(io.StringIO(csv), parse_dates=["date"])</pre>
+
+            <div class="help-tip" style="margin-top:8px">
+              📓 Full examples (single pixel, grid, parameter overrides) are in the repository:<br>
+              <a href="https://github.com/GeoModelLab/breath-api/blob/main/examples/breath_api_demo.ipynb" target="_blank" style="color:#3b82f6">Python Jupyter notebook ↗</a>
+              &nbsp;·&nbsp;
+              <a href="https://github.com/GeoModelLab/breath-api/blob/main/examples/breath_api_demo.Rmd" target="_blank" style="color:#3b82f6">R Markdown vignette ↗</a>
+            </div>
           </template>
 
           <!-- ── About ── -->
