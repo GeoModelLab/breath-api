@@ -112,7 +112,7 @@ window.ControlPanel = defineComponent({
     return {
       lat:          null,
       lon:          null,
-      startYear:    2020,
+      startYear:    2022,
       endYear:      2025,
       inputWeather: 'hourly',
       calibration:  false,
