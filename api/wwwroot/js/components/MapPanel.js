@@ -229,7 +229,12 @@ window.MapPanel = defineComponent({
   },
 
   methods: {
-    resize() { this.map?.invalidateSize() },
+    resize() {
+      if (!this.map) return
+      this.map.invalidateSize()
+      // Force SVG overlay redraw so markers don't lag behind tile movement
+      this.map.panBy([0, 0], { animate: false })
+    },
 
     toggleForest() {
       this.forestOn = !this.forestOn
