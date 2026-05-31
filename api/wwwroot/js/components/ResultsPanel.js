@@ -195,6 +195,24 @@ window.ResultsPanel = defineComponent({
           </div>
         </div>
 
+        <!-- ── Plant health radar ── -->
+        <div v-if="healthStats" class="health-radar-wrap">
+          <div class="health-radar-hd" @click="healthOpen=!healthOpen">
+            <span>🌿 Plant Health</span>
+            <span class="toggle-arrow">{{ healthOpen ? '▲' : '▼' }}</span>
+          </div>
+          <div v-show="healthOpen" class="health-radar-body">
+            <canvas ref="radarCanvas" style="height:180px;max-width:320px;margin:0 auto;display:block"></canvas>
+            <div class="health-legend">
+              <span v-for="s in healthStats.scores" :key="s.label" class="health-chip"
+                    :style="{borderColor: s.color}">
+                <span class="hchip-dot" :style="{background:s.color}"></span>
+                {{ s.label }}: <b>{{ s.pct }}%</b>
+              </span>
+            </div>
+          </div>
+        </div>
+
         <!-- ── Climate synthetics ── -->
         <div v-if="climateStats" class="climate-strip">
           <div class="cs-koppen">{{ climateStats.koppen }}</div>
@@ -424,6 +442,8 @@ window.ResultsPanel = defineComponent({
       _climoChart:    null,
       varTab:         'main',
       locationName:   '',
+      healthOpen:     true,
+      _radarChart:    null,
       MONTH_NAMES:    ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
     }
   },
@@ -661,6 +681,40 @@ window.ResultsPanel = defineComponent({
           return { year: yr, gpp, reco, nee, cue, tMean, pTotal, isSink: (nee ?? 0) < 0 }
         })
     },
+
+    healthStats() {
+      if (!this.hourly.length) return null
+      const AXES = [
+        { key: 'tscale',      label: 'T scale',     color: '#fbbf24', higher_is_better: true  },
+        { key: 'parscale',    label: 'PAR scale',   color: '#fef08a', higher_is_better: true  },
+        { key: 'vpdscale',    label: 'VPD scale',   color: '#c084fc', higher_is_better: true  },
+        { key: 'waterstress', label: 'Water',       color: '#818cf8', higher_is_better: false },
+      ]
+      const colMap = {}
+      for (const ax of AXES) {
+        const found = this.numericCols.find(c => c.toLowerCase() === ax.key)
+        if (found) colMap[ax.key] = found
+      }
+      if (!Object.keys(colMap).length) return null
+      const sums = {}, cnts = {}
+      for (const ax of AXES) { sums[ax.key] = 0; cnts[ax.key] = 0 }
+      for (const r of this.hourly) {
+        for (const ax of AXES) {
+          const v = colMap[ax.key] ? r[colMap[ax.key]] : null
+          if (v != null && isFinite(v)) { sums[ax.key] += v; cnts[ax.key]++ }
+        }
+      }
+      const scores = AXES
+        .filter(ax => cnts[ax.key] > 0)
+        .map(ax => {
+          const mean = sums[ax.key] / cnts[ax.key]
+          // waterstress: 0=no stress, 1=full stress → invert for radar (1=healthy)
+          const val  = ax.higher_is_better ? mean : (1 - mean)
+          return { label: ax.label, color: ax.color, val: Math.max(0, Math.min(1, val)), pct: Math.round(val * 100) }
+        })
+      if (!scores.length) return null
+      return { scores }
+    },
   },
 
   watch: {
@@ -670,12 +724,34 @@ window.ResultsPanel = defineComponent({
     dateTo()   { if (!this._settingFromLoad) nextTick(() => this.rebuild()) },
     climateStats(v) { if (v) nextTick(() => this.buildClimoChart()) },
     climoOpen(v)    { if (v) nextTick(() => this.buildClimoChart()) },
+    healthStats(v)  { if (v && this.healthOpen) nextTick(() => this.buildRadarChart()) },
+    healthOpen(v)   { if (v && this.healthStats) nextTick(() => this.buildRadarChart()) },
+  },
+
+  mounted() {
+    this._keyHandler = e => {
+      if (!this.hasData) return
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+      // Only pan when focus is not in an input/select
+      if (['INPUT','SELECT','TEXTAREA'].includes(document.activeElement?.tagName)) return
+      const panPx = e.shiftKey ? 200 : 60
+      const delta = e.key === 'ArrowRight' ? -panPx : panPx
+      for (const c of [this._swellChart, this._fluxChart]) {
+        if (c && typeof c.pan === 'function') {
+          try { c.pan({ x: delta }); this._syncZoom(c) } catch {}
+        }
+      }
+      e.preventDefault()
+    }
+    document.addEventListener('keydown', this._keyHandler)
   },
 
   beforeUnmount() {
+    document.removeEventListener('keydown', this._keyHandler)
     this._swellChart?.destroy()
     this._fluxChart?.destroy()
     this._climoChart?.destroy()
+    this._radarChart?.destroy()
   },
 
   methods: {
@@ -784,27 +860,76 @@ window.ResultsPanel = defineComponent({
 
       const colorscale = IS_FLUX(varName) ? 'Viridis' : 'YlOrRd'
 
-      Plotly.react(el, [{
+      // Optional: SWELL daily curve shown at hour=12
+      const traces = [{
         type:       'surface',
         x:          hours,
         y:          doys,
         z:          zData,
         colorscale,
-        colorbar:   { title: varUnit(varName) || varName, tickfont: { color: '#94a3b8', size: 9 } },
+        colorbar: {
+          orientation: 'h',
+          x: 0.5, xanchor: 'center',
+          y: 1.02, yanchor: 'bottom',
+          len: 0.6, thickness: 10,
+          title: { text: varUnit(varName) || varName, side: 'top', font: { size: 9, color: '#94a3b8' } },
+          tickfont: { color: '#94a3b8', size: 8 },
+        },
         contours: {
           z: { show: true, usecolormap: true, highlightcolor: '#42f462', project: { z: false } }
         },
-      }], {
+      }]
+
+      const swellKey = this.numericCols.find(c => /^swell$/i.test(c))
+      if (swellKey && swellKey !== varName) {
+        const swellByDoy = {}
+        for (const r of this.hourly) {
+          const v   = r[swellKey]
+          if (v == null || !isFinite(v)) continue
+          const dt  = new Date(r.date)
+          const doy = Math.floor((dt - new Date(dt.getFullYear(), 0, 0)) / 86400000)
+          if (!swellByDoy[doy]) swellByDoy[doy] = []
+          swellByDoy[doy].push(v)
+        }
+        const zRange = zData.flat().filter(v => v != null)
+        const zMin   = zRange.length ? Math.min(...zRange) : 0
+        const zMax   = zRange.length ? Math.max(...zRange) : 1
+        const swellZ = doys.map(d => {
+          const vals = swellByDoy[d]
+          if (!vals?.length) return null
+          const avg = vals.reduce((a,b)=>a+b,0)/vals.length
+          return zMin + avg * (zMax - zMin)  // scale SWELL to z range
+        })
+        traces.push({
+          type: 'scatter3d',
+          mode: 'lines',
+          x: Array(doys.length).fill(12),
+          y: doys,
+          z: swellZ,
+          line: { color: '#facc15', width: 4 },
+          name: 'SWELL',
+          hovertemplate: 'DOY %{y}<br>SWELL %{customdata:.2f}<extra></extra>',
+          customdata: doys.map(d => {
+            const vals = swellByDoy[d]; return vals?.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null
+          }),
+        })
+      }
+
+      Plotly.react(el, traces, {
         paper_bgcolor: '#0e1520',
         plot_bgcolor:  '#0e1520',
-        margin: { l:40, r:20, t:30, b:40 },
+        margin: { l:10, r:10, t:60, b:20 },
         scene: {
           xaxis: { title: 'Hour', color: '#64748b', gridcolor: '#1e2d44', zerolinecolor: '#1e2d44' },
           yaxis: { title: 'DOY',  color: '#64748b', gridcolor: '#1e2d44', zerolinecolor: '#1e2d44' },
           zaxis: { title: varUnit(varName) || varName, color: '#64748b', gridcolor: '#1e2d44' },
           bgcolor: '#0e1520',
-          camera: { eye: { x: 1.6, y: -1.6, z: 0.8 } },
+          aspectmode: 'manual',
+          aspectratio: { x: 3, y: 1, z: 0.6 },
+          camera: { eye: { x: 1.4, y: -2.0, z: 0.7 } },
         },
+        showlegend: true,
+        legend: { x: 0.01, y: 0.99, font: { color: '#94a3b8', size: 9 }, bgcolor: 'transparent' },
         font: { color: '#94a3b8' },
       }, { responsive: true, displaylogo: false })
     },
@@ -846,8 +971,13 @@ window.ResultsPanel = defineComponent({
         const d = new Date(parseInt(yr), 0, doy)
         return d.toISOString().slice(0,10)
       }
+      // Only show text labels on the most recent year to avoid overlap
+      const labelYear = this.phenoMetrics.length
+        ? this.phenoMetrics[this.phenoMetrics.length - 1].year
+        : null
       const annotations = {}
       for (const m of this.phenoMetrics) {
+        const showLabel = m.year === labelYear
         for (const [key, cfg] of Object.entries(MARKERS)) {
           if (m[key] == null) continue
           const dateStr = doyToDate(m.year, m[key])
@@ -855,10 +985,10 @@ window.ResultsPanel = defineComponent({
             type: 'line',
             xMin: dateStr, xMax: dateStr,
             borderColor: cfg.color,
-            borderWidth: 1.5,
+            borderWidth: showLabel ? 1.5 : 0.8,
             borderDash: [4, 3],
             label: {
-              display: true,
+              display: showLabel,
               content: cfg.label,
               position: 'start',
               color: cfg.color,
@@ -1081,6 +1211,51 @@ window.ResultsPanel = defineComponent({
               ticks:{ color:'#38bdf8', font:{size:9} },
               grid:{ drawOnChartArea:false },
               title:{ display:true, text:'mm', color:'#38bdf8', font:{size:8} },
+            },
+          },
+        },
+      })
+    },
+
+    buildRadarChart() {
+      const h = this.healthStats
+      if (!h || !this.$refs.radarCanvas) return
+      this._radarChart?.destroy()
+      const labels = h.scores.map(s => s.label)
+      const data   = h.scores.map(s => s.val * 100)
+      const colors = h.scores.map(s => s.color)
+      this._radarChart = new Chart(this.$refs.radarCanvas, {
+        type: 'radar',
+        data: {
+          labels,
+          datasets: [{
+            label: 'Plant Health',
+            data,
+            backgroundColor: 'rgba(74,222,128,0.15)',
+            borderColor: '#4ade80',
+            borderWidth: 2,
+            pointBackgroundColor: colors,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+          }],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false, animation: { duration: 0 },
+          scales: {
+            r: {
+              min: 0, max: 100,
+              ticks: { stepSize: 25, color: '#64748b', font: { size: 8 }, backdropColor: 'transparent' },
+              grid: { color: '#1e2d44' },
+              angleLines: { color: '#1e2d44' },
+              pointLabels: { color: '#94a3b8', font: { size: 9 } },
+            },
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#182030', titleColor: '#7080a0', bodyColor: '#c8d8e8',
+              borderColor: '#243050', borderWidth: 1,
+              callbacks: { label: ctx => ` ${ctx.parsed.r.toFixed(0)}%` },
             },
           },
         },

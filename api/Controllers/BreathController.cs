@@ -27,7 +27,6 @@ namespace BreathApi.Controllers
             try
             {
                 LogStreamer.Clear();
-                LogStreamer.Log($"[{DateTime.Now:HH:mm:ss}] Starting BREATH model...");
 
                 string json = JsonSerializer.Serialize(config);
 
@@ -48,6 +47,7 @@ namespace BreathApi.Controllers
                 }
                 catch { }
 
+                LogStreamer.Log($"[{DateTime.Now:HH:mm:ss}] ▶ Starting simulation for pixel {pixelId}…");
                 LogStreamer.SetRunning(pixelId);
 
                 _ = Task.Run(async () =>
@@ -55,14 +55,14 @@ namespace BreathApi.Controllers
                     try
                     {
                         var model = new BreathModel(LogStreamer.Log, _outputService.ResultsDirectory, baseUrl);
-                        LogStreamer.Log($"[{DateTime.Now:HH:mm:ss}] Running model engine...");
+                        LogStreamer.Log($"[{DateTime.Now:HH:mm:ss}] ⚙ Initialising model engine…");
                         string resultJson = await model.RunAsync(json);
 
                         string resultPath = Path.Combine(_outputService.ResultsDirectory, "last_result.json");
                         await SysFile.WriteAllTextAsync(resultPath, resultJson);
 
                         LogStreamer.SetCompleted();
-                        LogStreamer.Log($"[{DateTime.Now:HH:mm:ss}] Simulation complete.");
+                        LogStreamer.Log($"[{DateTime.Now:HH:mm:ss}] ✅ Simulation complete — results ready.");
                     }
                     catch (Exception ex)
                     {

@@ -842,6 +842,15 @@ h2 {
 .cs-climo-hd:hover { color: #94a3b8; }
 .cs-climo-body { height: 160px; position: relative; }
 
+/* Plant health radar */
+.health-radar-wrap { margin: 8px 0 4px; }
+.health-radar-hd { display: flex; align-items: center; justify-content: space-between; font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: .06em; cursor: pointer; padding: 4px 0; user-select: none; }
+.health-radar-hd:hover { color: #94a3b8; }
+.health-radar-body { position: relative; }
+.health-legend { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; margin-top: 4px; }
+.health-chip { display: flex; align-items: center; gap: 4px; font-size: 9px; color: #94a3b8; border: 1px solid; border-radius: 10px; padding: 1px 6px; }
+.hchip-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+
 /* Grid variable selector */
 .grid-var-sel { background: #0e1520; color: #94a3b8; border: 1px solid #243050; border-radius: 4px; padding: 2px 4px; font-size: 11px; }
 
