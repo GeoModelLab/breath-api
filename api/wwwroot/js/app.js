@@ -163,15 +163,13 @@ createApp({
     },
 
     onHistoryPoint({ lat, lon }) {
-      // Find the cached CSV for this point from the history and re-show its results
       const entry = this.$refs.mapPanel?.pointHistory?.find(h => h.lat === lat && h.lon === lon)
-      if (!entry) return
-      // Restore state to show results panel
-      if (this.lastCsvText) {
-        this.$refs.results?.loadCsv(this.lastCsvText)
-        this.appState = 'completed'
-        this.$nextTick(() => this.$refs.mapPanel?.resize())
-      }
+      const csv = entry?.csv ?? this.lastCsvText
+      if (!csv) return
+      this.$refs.results?.loadCsv(csv)
+      this.$refs.results.locationName = this.$refs.mapPanel?.locationName || entry?.label || ''
+      this.appState = 'completed'
+      this.$nextTick(() => this.$refs.mapPanel?.resize())
     },
 
     resetToMap() {
@@ -284,7 +282,7 @@ createApp({
                 : null
               const label = this.$refs.mapPanel?.coord || null
               this.$refs.mapPanel?.attachPointStats(
-                this.point.lat, this.point.lon, combined, label
+                this.point.lat, this.point.lon, combined, label, csv
               )
             }
             return

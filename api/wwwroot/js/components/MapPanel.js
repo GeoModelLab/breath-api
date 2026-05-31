@@ -383,21 +383,19 @@ window.MapPanel = defineComponent({
     },
 
     // ── Attach simulation KPIs to the current single-point marker ──────────
-    attachPointStats(lat, lon, stats, label) {
-      // Remove any existing un-KPI-ed marker at same coords
+    attachPointStats(lat, lon, stats, label, csv) {
       const existing = this.pointHistory.find(h => h.lat === lat && h.lon === lon)
       if (existing) {
-        // Update existing history entry
         existing.stats = stats
+        existing.csv   = csv ?? existing.csv
         existing.label = label || existing.label
         this._refreshHistoryMarker(existing)
         return
       }
 
-      // Replace the plain marker with a KPI-enriched circle marker
       if (this.marker) { this.map.removeLayer(this.marker); this.marker = null }
 
-      const entry = { lat, lon, label: label || `${lat.toFixed(3)}°N ${lon.toFixed(3)}°E`, stats }
+      const entry = { lat, lon, label: label || `${lat.toFixed(3)}°N ${lon.toFixed(3)}°E`, stats, csv: csv ?? null }
       this._refreshHistoryMarker(entry)
       this.pointHistory.push(entry)
     },
