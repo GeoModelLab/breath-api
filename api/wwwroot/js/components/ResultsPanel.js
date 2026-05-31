@@ -936,31 +936,33 @@ window.ResultsPanel = defineComponent({
         const d = new Date(parseInt(yr), 0, doy)
         return d.toISOString().slice(0,10)
       }
+      // Stagger label positions across years so they don't overlap
+      // Each year gets a different vertical offset: 0%, 20%, 40%, 60%…
+      const years  = this.phenoMetrics.map(m => m.year)
+      const nYears = years.length
       const annotations = {}
-      const labelYear = this.phenoMetrics.length
-        ? this.phenoMetrics[this.phenoMetrics.length - 1].year
-        : null
-      for (const m of this.phenoMetrics) {
-        const isLastYear = m.year === labelYear
+      for (let yi = 0; yi < this.phenoMetrics.length; yi++) {
+        const m = this.phenoMetrics[yi]
+        const isLast = yi === nYears - 1
+        // Spread positions: last year at top (5%), others staggered downward
+        const pct = isLast ? '5%' : `${5 + (nYears - 1 - yi) * Math.min(20, 60 / Math.max(1, nYears - 1))}%`
         for (const [key, cfg] of Object.entries(MARKERS)) {
           if (m[key] == null) continue
           const dateStr = doyToDate(m.year, m[key])
-          // SGS line shows year label at bottom for every year (inter-year comparison)
-          // Other lines show phase label only on last year to avoid clutter
-          const isSGS = key === 'sgs'
+          const label   = isLast ? cfg.label : (key === 'sgs' ? m.year : cfg.label.slice(0,1))
           annotations[`${key}_${m.year}`] = {
             type: 'line',
             xMin: dateStr, xMax: dateStr,
             borderColor: cfg.color,
-            borderWidth: isLastYear ? 1.5 : 0.8,
+            borderWidth: isLast ? 1.5 : 0.7,
             borderDash: [4, 3],
             label: {
-              display: isLastYear || isSGS,
-              content: isSGS && !isLastYear ? m.year : cfg.label,
-              position: isSGS && !isLastYear ? 'end' : 'start',
+              display: true,
+              content: label,
+              position: pct,
               color: cfg.color,
-              backgroundColor: 'rgba(14,21,32,0.7)',
-              font: { size: isSGS && !isLastYear ? 8 : 9 },
+              backgroundColor: 'rgba(14,21,32,0.75)',
+              font: { size: isLast ? 9 : 8 },
               padding: 2,
             },
           }
