@@ -232,8 +232,8 @@ window.MapPanel = defineComponent({
     resize() {
       if (!this.map) return
       this.map.invalidateSize()
-      // Force SVG overlay redraw so markers don't lag behind tile movement
-      this.map.panBy([0, 0], { animate: false })
+      // Re-center the view at the same position to force all overlays (markers, SVG) to reposition
+      this.map.setView(this.map.getCenter(), this.map.getZoom(), { animate: false })
     },
 
     toggleForest() {
@@ -274,6 +274,7 @@ window.MapPanel = defineComponent({
           const label = parts.join(', ')
           const coordStr = `${lat.toFixed(3)}°N ${lon.toFixed(3)}°E`
           this.coord = label ? `${label} (${coordStr})` : coordStr
+          this.locationName = label || `${lat.toFixed(3)}_${lon.toFixed(3)}`
           // Update the current marker popup with enriched info
           if (this.marker) {
             this.marker.getPopup()?.setContent(

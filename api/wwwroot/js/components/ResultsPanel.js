@@ -73,37 +73,30 @@ function yAxisFor(chart, name) {
   return (chart === 'swell' && IS_WEATHER(name)) ? 'yRight' : 'yLeft'
 }
 
+// parscale is 0 at night by definition; average only daytime (non-zero) values for daily display
+const DAYTIME_ONLY = /parscale/i
+
 function dailyAgg(rows, cols) {
   const d = {}
   for (const r of rows) {
     if (!d[r.date]) { d[r.date] = {}; cols.forEach(c => { d[r.date][c] = [] }) }
-    cols.forEach(c => { const v = r[c]; if (v != null && isFinite(v)) d[r.date][c].push(v) })
+    cols.forEach(c => {
+      const v = r[c]
+      if (v == null || !isFinite(v)) return
+      if (DAYTIME_ONLY.test(c) && v <= 0) return
+      d[r.date][c].push(v)
+    })
   }
   return Object.entries(d).sort(([a],[b])=>a<b?-1:1)
     .map(([date,v]) => { const row={date}; cols.forEach(c=>{ row[c]=mean(v[c]) }); return row })
 }
 
-const SWELL_GROUPS = [
-  { label:'Phenology',  match: n => /^swell$|^reference$|^vegetationcover$/i.test(n) },
-  { label:'Scalers ×',  match: n => /tscale|parscale|waterstress|vpdscale/i.test(n) },
-  { label:'Weather ↗',  match: n => IS_WEATHER(n) },
+const VAR_TAB_GROUPS = [
+  { key:'main',    label:'Main',    match: n => /^(swell|reference|gpp|reco|nee)$/i.test(n) },
+  { key:'scalers', label:'Scalers', match: n => /tscale|parscale|waterstress|vpdscale|phenoscale|phenoreco/i.test(n) },
+  { key:'weather', label:'Weather', match: n => IS_WEATHER(n) },
+  { key:'other',   label:'Other',   match: () => true },
 ]
-const FLUX_GROUPS = [
-  { label:'Carbon exchange', match: n => /^(gpp|reco|nee)$/i.test(n) },
-  { label:'Components',      match: n => /gppover|gppunder|recoover|recounder|recohetero|trecoref/i.test(n) },
-]
-
-function makeGroups(cols, groupDefs) {
-  const used = new Set(); const result = []
-  for (const g of groupDefs) {
-    const gc = cols.filter(c => g.match(c) && !used.has(c))
-    gc.forEach(c => used.add(c))
-    if (gc.length) result.push({ label: g.label, cols: gc })
-  }
-  const rest = cols.filter(c => !used.has(c))
-  if (rest.length) result.push({ label:'Other', cols: rest })
-  return result
-}
 
 // ── Full Köppen-Geiger classification ───────────────────────────────────
 function koppenClassify(annT, tCold, tWarm, annP, pMonthly, tMonthly) {
@@ -194,16 +187,6 @@ window.ResultsPanel = defineComponent({
             <div class="metric-value">{{ stats.peakGPP }}</div>
             <div class="metric-unit">µmol m⁻² s⁻¹</div>
           </div>
-          <div class="metric-card" style="grid-column:1/2">
-            <div class="metric-label">CUE (GPP/RECO)</div>
-            <div class="metric-value" style="font-size:1.4em">{{ stats.cue }}</div>
-            <div class="metric-unit">dimensionless · &gt;1 = net sink</div>
-          </div>
-          <div class="metric-card" style="grid-column:2/3">
-            <div class="metric-label">iNEE variability</div>
-            <div class="metric-value" style="font-size:1.4em">{{ stats.neeCV }}</div>
-            <div class="metric-unit">CV% inter-annual</div>
-          </div>
         </div>
 
         <!-- ── Climate synthetics ── -->
@@ -221,14 +204,14 @@ window.ResultsPanel = defineComponent({
               <span class="cs-p">{{ climateStats.annP }} mm</span>
             </div>
           </div>
-          <!-- Monthly T curve -->
-          <div class="cs-monthly">
-            <div class="cs-monthly-title">Monthly T (°C) · P (mm)</div>
-            <div class="cs-monthly-bars">
-              <div v-for="(m, i) in climateStats.monthly" :key="i" class="cs-month-col">
-                <div class="cs-t-dot" :style="'bottom:'+m.tPos+'px'" :title="MONTH_NAMES[i]+': '+m.t+'°C  '+m.p+' mm'"></div>
-                <div class="cs-month-lbl">{{ MONTH_NAMES[i][0] }}</div>
-              </div>
+          <!-- Climogram (collapsible) -->
+          <div class="cs-climo-wrap">
+            <div class="cs-climo-hd" @click="climoOpen=!climoOpen">
+              <span>Climogram</span>
+              <span class="toggle-arrow">{{ climoOpen ? '▲' : '▼' }}</span>
+            </div>
+            <div v-show="climoOpen" class="cs-climo-body">
+              <canvas ref="climoCanvas" style="height:160px"></canvas>
             </div>
           </div>
         </div>
@@ -324,7 +307,7 @@ window.ResultsPanel = defineComponent({
             <button :class="['agg-btn', aggMode==='daily'  && 'active']" @click="aggMode='daily'">Day</button>
             <button :class="['agg-btn', aggMode==='hourly' && 'active']" @click="aggMode='hourly'">Hr</button>
           </div>
-          <a href="/api/results/latest" download="breath_results.csv"
+          <a href="/api/results/latest" :download="csvFilename"
              class="btn-outline btn-sm" style="margin-left:4px;text-decoration:none">⬇ CSV</a>
           <button class="chart-zoom-reset" @click="resetAllZoom" title="Reset zoom">⤢</button>
           <!-- 3D toggle -->
@@ -387,39 +370,22 @@ window.ResultsPanel = defineComponent({
 
           </div>
 
-          <!-- Right: variable toggle panel -->
+          <!-- Right: variable toggle panel (tabbed) -->
           <div class="var-panel">
-            <div class="var-section-hd">
-              <span class="var-section-dot swell-dot"></span> SWELL
+            <div class="var-tab-bar">
+              <button v-for="t in varTabList" :key="t.key"
+                      :class="['var-tab-btn', varTab===t.key && 'active']"
+                      @click="varTab=t.key">{{ t.label }}</button>
             </div>
-            <div v-for="g in swellVarGroups" :key="'sg_'+g.label" class="var-group">
-              <div class="var-group-lbl">{{ g.label }}</div>
-              <div v-for="col in g.cols" :key="col"
-                   :class="['var-row', isSwellOn(col) && 'on']"
-                   @click="toggleSwell(col)">
-                <span class="var-dot" :style="'background:'+varColor(col)+'44;border:1.5px solid '+varColor(col)"></span>
-                <span class="var-name">{{ col }}</span>
-                <span :class="['var-axis-tag', IS_WEATHER(col) ? 'ax-right' : 'ax-left']">
-                  {{ IS_WEATHER(col) ? 'R' : 'L' }}
-                </span>
-                <span :class="['var-sw', isSwellOn(col) && 'on']"></span>
-              </div>
-            </div>
-
-            <div class="var-divider"></div>
-
-            <div class="var-section-hd">
-              <span class="var-section-dot flux-dot"></span> FLUXES
-            </div>
-            <div v-for="g in fluxVarGroups" :key="'fg_'+g.label" class="var-group">
-              <div class="var-group-lbl">{{ g.label }}</div>
-              <div v-for="col in g.cols" :key="col"
-                   :class="['var-row', isFluxOn(col) && 'on']"
-                   @click="toggleFlux(col)">
-                <span class="var-dot" :style="'background:'+varColor(col)+'44;border:1.5px solid '+varColor(col)"></span>
-                <span class="var-name">{{ col }}</span>
-                <span :class="['var-sw', isFluxOn(col) && 'on']"></span>
-              </div>
+            <div v-for="col in varTabCols" :key="col"
+                 :class="['var-row', isVarOn(col) && 'on']"
+                 @click="toggleVar(col)">
+              <span class="var-dot" :style="'background:'+varColor(col)+'44;border:1.5px solid '+varColor(col)"></span>
+              <span class="var-name">{{ col }}</span>
+              <span :class="['var-axis-tag', IS_FLUX(col) ? 'ax-flux' : IS_WEATHER(col) ? 'ax-right' : 'ax-left']">
+                {{ IS_FLUX(col) ? 'F' : IS_WEATHER(col) ? 'R' : 'L' }}
+              </span>
+              <span :class="['var-sw', isVarOn(col) && 'on']"></span>
             </div>
           </div>
 
@@ -448,6 +414,10 @@ window.ResultsPanel = defineComponent({
       showPhenoTable: false,
       show3D:         false,
       var3D:          'GPP',
+      climoOpen:      true,
+      _climoChart:    null,
+      varTab:         'main',
+      locationName:   '',
       MONTH_NAMES:    ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
     }
   },
@@ -493,34 +463,46 @@ window.ResultsPanel = defineComponent({
       const annRECO = toGC(reco)
       const annNEE  = toGC(nee)
 
-      // Inter-annual NEE coefficient of variation
-      let neeCV = '—'
-      if (this.yearlyStats.length > 1) {
-        const neeVals = this.yearlyStats.map(y => y.nee).filter(v => v != null)
-        if (neeVals.length > 1) {
-          const m = neeVals.reduce((a,b)=>a+b,0)/neeVals.length
-          const sd = Math.sqrt(neeVals.map(v=>(v-m)**2).reduce((a,b)=>a+b,0)/neeVals.length)
-          neeCV = m !== 0 ? Math.abs(sd/m*100).toFixed(0) : '—'
-        }
-      }
-
       return {
         annNEE, annGPP, annRECO,
         peakGPP: +Math.max(0,...gpp).toFixed(2), nDays,
         filtered: !!(this.dateFrom || this.dateTo),
-        cue: annGPP && annRECO ? (annGPP / annRECO).toFixed(2) : '—',
-        neeCV,
       }
     },
 
-    swellVarGroups() {
-      const cols = this.numericCols.filter(c => !IS_FLUX(c) && !HIDDEN_VARS.has(c.toLowerCase()))
-      return makeGroups(cols, SWELL_GROUPS)
+    varTabGroups() {
+      const cols = this.numericCols.filter(c => !HIDDEN_VARS.has(c.toLowerCase()))
+      const used = new Set()
+      const result = {}
+      for (const g of VAR_TAB_GROUPS) {
+        if (g.key === 'other') {
+          result.other = cols.filter(c => !used.has(c))
+        } else {
+          result[g.key] = cols.filter(c => g.match(c) && !used.has(c))
+          result[g.key].forEach(c => used.add(c))
+        }
+      }
+      return result
     },
 
-    fluxVarGroups() {
-      const cols = this.numericCols.filter(c => IS_FLUX(c))
-      return makeGroups(cols, FLUX_GROUPS)
+    varTabList() {
+      const tabs = this.varTabGroups
+      return VAR_TAB_GROUPS
+        .filter(g => (tabs[g.key] ?? []).length > 0)
+        .map(g => ({ key: g.key, label: g.label }))
+    },
+
+    varTabCols() {
+      return this.varTabGroups[this.varTab] ?? []
+    },
+
+    csvFilename() {
+      const name = (this.locationName || 'breath').replace(/[^a-zA-Z0-9_\-]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '')
+      const rows = this.hourly
+      const y1 = rows[0]?.date?.slice(0,4) || ''
+      const y2 = rows[rows.length-1]?.date?.slice(0,4) || ''
+      const period = y1 && y2 ? (y1 === y2 ? y1 : `${y1}-${y2}`) : 'results'
+      return `${name || 'breath'}_${period}.csv`
     },
 
     numeric3DVars() {
@@ -676,44 +658,78 @@ window.ResultsPanel = defineComponent({
   },
 
   watch: {
-    aggMode()  { if (!this._settingFromLoad) nextTick(() => this.rebuild()) },
+    aggMode()  { if (!this._settingFromLoad) { this._extractZoomToDates(); nextTick(() => this.rebuild()) } },
     chartType(){ if (!this._settingFromLoad) nextTick(() => this.rebuild()) },
     dateFrom() { if (!this._settingFromLoad) nextTick(() => this.rebuild()) },
     dateTo()   { if (!this._settingFromLoad) nextTick(() => this.rebuild()) },
+    climateStats(v) { if (v) nextTick(() => this.buildClimoChart()) },
+    climoOpen(v)    { if (v) nextTick(() => this.buildClimoChart()) },
   },
 
   beforeUnmount() {
     this._swellChart?.destroy()
     this._fluxChart?.destroy()
+    this._climoChart?.destroy()
   },
 
   methods: {
     fmt(n) { return n.toLocaleString() },
     clearBrush() { this.dateFrom=''; this.dateTo='' },
-    varColor, IS_WEATHER,
-    isSwellOn(col) { return this.swellDatasets.includes(col) },
-    isFluxOn(col)  { return this.fluxDatasets.includes(col) },
+    varColor, IS_WEATHER, IS_FLUX,
+    isVarOn(col)   { return IS_FLUX(col) ? this.fluxDatasets.includes(col) : this.swellDatasets.includes(col) },
 
-    toggleSwell(col) {
-      const idx = this.swellDatasets.indexOf(col)
-      if (idx >= 0) {
-        if (this.swellDatasets.length <= 1) return
-        this.swellDatasets = this.swellDatasets.filter((_,i)=>i!==idx)
+    toggleVar(col) {
+      if (IS_FLUX(col)) {
+        const idx = this.fluxDatasets.indexOf(col)
+        if (idx >= 0) {
+          if (this.fluxDatasets.length <= 1) return
+          this.fluxDatasets = this.fluxDatasets.filter((_,i) => i !== idx)
+        } else {
+          this.fluxDatasets = [...this.fluxDatasets, col]
+        }
+        this._patchChart('flux')
       } else {
-        this.swellDatasets = [...this.swellDatasets, col]
+        const idx = this.swellDatasets.indexOf(col)
+        if (idx >= 0) {
+          if (this.swellDatasets.length <= 1) return
+          this.swellDatasets = this.swellDatasets.filter((_,i) => i !== idx)
+        } else {
+          this.swellDatasets = [...this.swellDatasets, col]
+        }
+        this._patchChart('swell')
       }
-      nextTick(() => this.buildSwellChart())
     },
 
-    toggleFlux(col) {
-      const idx = this.fluxDatasets.indexOf(col)
-      if (idx >= 0) {
-        if (this.fluxDatasets.length <= 1) return
-        this.fluxDatasets = this.fluxDatasets.filter((_,i)=>i!==idx)
-      } else {
-        this.fluxDatasets = [...this.fluxDatasets, col]
+    _patchChart(which) {
+      const chart = which === 'swell' ? this._swellChart : this._fluxChart
+      const names = which === 'swell' ? this.swellDatasets : this.fluxDatasets
+      if (!chart) {
+        if (which === 'swell') this.buildSwellChart()
+        else this.buildFluxChart()
+        return
       }
-      nextTick(() => this.buildFluxChart())
+      chart.data.datasets = this._makeDatasets(names, which)
+      chart.update('active')
+    },
+
+    _extractZoomToDates() {
+      const chart = this._swellChart || this._fluxChart
+      if (!chart) return
+      const labels = chart.data.labels
+      if (!labels?.length) return
+      const sc = chart.scales.x
+      const minIdx = sc.min != null ? Math.round(sc.min) : 0
+      const maxIdx = sc.max != null ? Math.round(sc.max) : labels.length - 1
+      if (minIdx > 0 || maxIdx < labels.length - 1) {
+        const from = (labels[Math.max(0, minIdx)] ?? '').slice(0, 10)
+        const to   = (labels[Math.min(labels.length - 1, maxIdx)] ?? '').slice(0, 10)
+        if (from && to) {
+          this._settingFromLoad = true
+          this.dateFrom = from
+          this.dateTo   = to
+          this._settingFromLoad = false
+        }
+      }
     },
 
     toggle3D() {
@@ -985,6 +1001,71 @@ window.ResultsPanel = defineComponent({
               type:'linear', position:'left',
               ticks:{color:'#64748b',font:{size:9}}, grid:{color:'#1e2d44'},
               title:{display:true, text:'µmol m⁻² s⁻¹', color:'#445566', font:{size:8}},
+            },
+          },
+        },
+      })
+    },
+
+    buildClimoChart() {
+      const stats = this.climateStats
+      if (!stats || !this.$refs.climoCanvas) return
+      this._climoChart?.destroy()
+      const tData = stats.monthly.map(m => parseFloat(m.t))
+      const pData = stats.monthly.map(m => parseFloat(m.p))
+      this._climoChart = new Chart(this.$refs.climoCanvas, {
+        type: 'bar',
+        data: {
+          labels: this.MONTH_NAMES,
+          datasets: [
+            {
+              type: 'line',
+              label: 'T (°C)',
+              data: tData,
+              yAxisID: 'yT',
+              borderColor: '#fb7185',
+              backgroundColor: 'transparent',
+              borderWidth: 2,
+              pointRadius: 3,
+              pointHoverRadius: 5,
+              tension: 0.4,
+              order: 1,
+            },
+            {
+              type: 'bar',
+              label: 'P (mm)',
+              data: pData,
+              yAxisID: 'yP',
+              backgroundColor: '#38bdf866',
+              borderColor: '#38bdf8',
+              borderWidth: 1,
+              order: 2,
+            },
+          ],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false, animation: {duration:0},
+          interaction: { mode:'index', intersect:false },
+          plugins: {
+            legend: { display: true, labels: { color:'#94a3b8', font:{size:9}, boxWidth:12 } },
+            tooltip: {
+              backgroundColor:'#182030', titleColor:'#7080a0', bodyColor:'#c8d8e8',
+              borderColor:'#243050', borderWidth:1,
+            },
+          },
+          scales: {
+            x: { ticks:{ color:'#64748b', font:{size:9} }, grid:{ color:'#1e2d44' } },
+            yT: {
+              type:'linear', position:'left',
+              ticks:{ color:'#fb7185', font:{size:9} },
+              grid:{ color:'#1e2d44' },
+              title:{ display:true, text:'°C', color:'#fb7185', font:{size:8} },
+            },
+            yP: {
+              type:'linear', position:'right', min:0,
+              ticks:{ color:'#38bdf8', font:{size:9} },
+              grid:{ drawOnChartArea:false },
+              title:{ display:true, text:'mm', color:'#38bdf8', font:{size:8} },
             },
           },
         },

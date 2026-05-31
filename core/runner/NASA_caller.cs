@@ -147,7 +147,10 @@ namespace runner.data
 
                         inp.airTemperatureH[i]   = GetVal(data, "T2M",               timestamp);
                         inp.relativeHumidityH[i] = GetVal(data, "RH2M",              timestamp);
-                        inp.precipitationH[i]    = GetVal(data, "PRECTOTCORR",       timestamp);
+                        // NASA POWER hourly PRECTOTCORR = mm/day (daily total, repeated in every hour slot)
+                        // divide by 24 to obtain mm/h for each hourly slot
+                        float precMmDay = GetVal(data, "PRECTOTCORR", timestamp);
+                        inp.precipitationH[i]    = float.IsNaN(precMmDay) ? 0f : precMmDay / 24f;
 
                         // NASA POWER hourly gives W/m² — convert to MJ/m²/h (×3.6e-3)
                         // so that the ×544 factor in exchanges.cs correctly yields µmol PAR/m²/s

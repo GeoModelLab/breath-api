@@ -265,7 +265,7 @@ createApp({
           if (csv && csv.trim().length > 50) {
             this.lastCsvText = csv
             this.$refs.results.loadCsv(csv)
-            this.$refs.log?.append('📊 Results loaded.')
+            this.$refs.results.locationName = this.$refs.mapPanel?.locationName || ''
 
             const pixelStats = this._getPixelStats(csv)
 
