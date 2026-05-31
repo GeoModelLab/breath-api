@@ -202,7 +202,9 @@ window.ResultsPanel = defineComponent({
             <span class="toggle-arrow">{{ healthOpen ? '▲' : '▼' }}</span>
           </div>
           <div v-show="healthOpen" class="health-radar-body">
-            <canvas ref="radarCanvas" style="height:180px;max-width:320px;margin:0 auto;display:block"></canvas>
+            <div style="position:relative;height:180px;max-width:320px;margin:0 auto">
+              <canvas ref="radarCanvas"></canvas>
+            </div>
             <div class="health-legend">
               <span v-for="s in healthStats.scores" :key="s.label" class="health-chip"
                     :style="{borderColor: s.color}">
@@ -443,7 +445,6 @@ window.ResultsPanel = defineComponent({
       varTab:         'main',
       locationName:   '',
       healthOpen:     true,
-      _radarChart:    null,
       MONTH_NAMES:    ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
     }
   },
@@ -751,7 +752,7 @@ window.ResultsPanel = defineComponent({
     this._swellChart?.destroy()
     this._fluxChart?.destroy()
     this._climoChart?.destroy()
-    this._radarChart?.destroy()
+    this.__radarChart?.destroy()
   },
 
   methods: {
@@ -971,29 +972,31 @@ window.ResultsPanel = defineComponent({
         const d = new Date(parseInt(yr), 0, doy)
         return d.toISOString().slice(0,10)
       }
-      // Only show text labels on the most recent year to avoid overlap
+      const annotations = {}
       const labelYear = this.phenoMetrics.length
         ? this.phenoMetrics[this.phenoMetrics.length - 1].year
         : null
-      const annotations = {}
       for (const m of this.phenoMetrics) {
-        const showLabel = m.year === labelYear
+        const isLastYear = m.year === labelYear
         for (const [key, cfg] of Object.entries(MARKERS)) {
           if (m[key] == null) continue
           const dateStr = doyToDate(m.year, m[key])
+          // SGS line shows year label at bottom for every year (inter-year comparison)
+          // Other lines show phase label only on last year to avoid clutter
+          const isSGS = key === 'sgs'
           annotations[`${key}_${m.year}`] = {
             type: 'line',
             xMin: dateStr, xMax: dateStr,
             borderColor: cfg.color,
-            borderWidth: showLabel ? 1.5 : 0.8,
+            borderWidth: isLastYear ? 1.5 : 0.8,
             borderDash: [4, 3],
             label: {
-              display: showLabel,
-              content: cfg.label,
-              position: 'start',
+              display: isLastYear || isSGS,
+              content: isSGS && !isLastYear ? m.year : cfg.label,
+              position: isSGS && !isLastYear ? 'end' : 'start',
               color: cfg.color,
-              backgroundColor: 'transparent',
-              font: { size: 9 },
+              backgroundColor: 'rgba(14,21,32,0.7)',
+              font: { size: isSGS && !isLastYear ? 8 : 9 },
               padding: 2,
             },
           }
@@ -1220,11 +1223,11 @@ window.ResultsPanel = defineComponent({
     buildRadarChart() {
       const h = this.healthStats
       if (!h || !this.$refs.radarCanvas) return
-      this._radarChart?.destroy()
+      this.__radarChart?.destroy()
       const labels = h.scores.map(s => s.label)
       const data   = h.scores.map(s => s.val * 100)
       const colors = h.scores.map(s => s.color)
-      this._radarChart = new Chart(this.$refs.radarCanvas, {
+      this.__radarChart = new Chart(this.$refs.radarCanvas, {
         type: 'radar',
         data: {
           labels,
