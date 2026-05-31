@@ -1,0 +1,361 @@
+---
+title: "BREATH API – R Vignette"
+author: "GeoModelLab"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+    highlight: kate
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.width = 10)
+```
+
+## Overview
+
+**BREATH** (Biophysical Rhythm of Ecosystem Activity & Health) simulates
+hourly GPP, RECO, and NEE for deciduous broadleaf forest pixels using:
+
+- **VPRM** (Vegetation Photosynthesis and Respiration Model) for carbon fluxes
+- **SWELL** phenology for seasonal leaf dynamics
+- **NASA POWER** weather data (hourly or daily disaggregated)
+
+This vignette demonstrates the complete R workflow:
+
+1. Submit a simulation via the REST API
+2. Poll until the run completes
+3. Parse the hourly CSV results
+4. Compute annual carbon budgets and seasonal diagnostics
+5. Visualise fluxes and SWELL phenology
+
+### Dependencies
+
+```{r packages}
+# install.packages(c("httr2", "readr", "dplyr", "tidyr", "lubridate", "ggplot2", "patchwork"))
+library(httr2)
+library(readr)
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(ggplot2)
+library(patchwork)
+
+BASE_URL <- "https://breath-api-thkm.onrender.com"
+# For local development use: BASE_URL <- "http://localhost:5244"
+```
+
+---
+
+## 1 · Submit a simulation
+
+A pixel is identified by `"lat_lon"` (4 decimal places).
+We simulate a deciduous broadleaf forest in the northern Apennines (Italy).
+
+```{r submit}
+pixel    <- "44.1234_10.7654"
+start_yr <- 2022L
+end_yr   <- 2024L
+
+payload <- list(
+  settings = list(
+    pixelsRun           = list(pixel),
+    startYear           = start_yr,
+    endYear             = end_yr,
+    inputWeather        = "hourly",        # "hourly" | "daily" | "era5land"
+    modelVariant        = "Circadian",     # "Baseline" | "Pheno" | "Circadian"
+    calibration         = FALSE,           # TRUE = calibrate against MODIS EVI
+    calibrationVariable = "Phenology",
+    simplexes           = 3L,
+    iterations          = 200L,
+    parametersDataFile  = "photothermalRequirements.csv"
+  )
+)
+
+resp <- request(paste0(BASE_URL, "/api/breath/run")) |>
+  req_method("POST") |>
+  req_body_json(payload) |>
+  req_timeout(30) |>
+  req_perform()
+
+resp_body_json(resp)
+```
+
+---
+
+## 2 · Poll until complete
+
+```{r poll}
+wait_for_completion <- function(base_url, poll_interval = 10, timeout = 600) {
+  deadline <- Sys.time() + timeout
+  repeat {
+    status <- request(paste0(base_url, "/api/breath/status")) |>
+      req_timeout(10) |>
+      req_perform() |>
+      resp_body_json()
+
+    cat(sprintf("\r  Status: %-12s", status$Status))
+
+    if (status$Status == "Completed") {
+      cat(sprintf("\nDone — duration: %s ms\n", status$DurationMs %||% "?"))
+      return(invisible(status))
+    }
+    if (status$Status == "Failed")
+      stop("Simulation failed. Check /api/breath/stream/logs for details.")
+    if (Sys.time() > deadline)
+      stop(sprintf("Simulation did not finish within %d s.", timeout))
+
+    Sys.sleep(poll_interval)
+  }
+}
+
+# Null-coalescing helper (base R < 4.4 compatible)
+`%||%` <- function(a, b) if (!is.null(a)) a else b
+
+wait_for_completion(BASE_URL)
+```
+
+---
+
+## 3 · Download and parse results
+
+`GET /api/results/latest` returns a CSV with one row per simulated hour.
+
+```{r download}
+csv_raw <- request(paste0(BASE_URL, "/api/results/latest")) |>
+  req_timeout(60) |>
+  req_perform() |>
+  resp_body_string()
+
+df <- read_csv(csv_raw, show_col_types = FALSE) |>
+  mutate(date = as.Date(date),
+         year = year(date),
+         month = month(date),
+         doy   = yday(date))
+
+glimpse(df)
+```
+
+---
+
+## 4 · Annual carbon budget
+
+Daily mean fluxes (µmol CO₂ m⁻² s⁻¹) × 86 400 s day⁻¹ × 12.01 g mol⁻¹ × 10⁻⁶ mol µmol⁻¹
+= gC m⁻² day⁻¹.
+
+```{r annual-budget}
+UMOL_TO_GC_DAY <- 86400 * 12.01e-6
+
+daily <- df |>
+  group_by(date, year) |>
+  summarise(across(c(GPP, RECO, NEE), mean, na.rm = TRUE), .groups = "drop") |>
+  mutate(across(c(GPP, RECO, NEE), ~ .x * UMOL_TO_GC_DAY))
+
+annual <- daily |>
+  group_by(year) |>
+  summarise(
+    GPP_gC  = round(sum(GPP,  na.rm = TRUE), 1),
+    RECO_gC = round(sum(RECO, na.rm = TRUE), 1),
+    NEE_gC  = round(sum(NEE,  na.rm = TRUE), 1),
+    CUE     = round(GPP_gC / RECO_gC, 3),
+    Balance = if_else(NEE_gC < 0, "sink", "source"),
+    .groups = "drop"
+  )
+
+knitr::kable(annual, caption = "Annual carbon budget (gC m⁻² yr⁻¹)")
+```
+
+---
+
+## 5 · Time-series plot
+
+```{r flux-plot, fig.height=7}
+# SWELL (if present)
+p_swell <- NULL
+if ("SWELL" %in% names(df)) {
+  swell_d <- df |>
+    group_by(date) |>
+    summarise(SWELL = mean(SWELL, na.rm = TRUE), .groups = "drop")
+
+  p_swell <- ggplot(swell_d, aes(date, SWELL)) +
+    geom_ribbon(aes(ymin = 0, ymax = SWELL), fill = "#facc15", alpha = 0.3) +
+    geom_line(colour = "#ca8a04", linewidth = 0.7) +
+    scale_y_continuous(limits = c(0, 1)) +
+    labs(y = "SWELL (EVI)", x = NULL) +
+    theme_minimal(base_size = 10) +
+    theme(panel.grid.minor = element_blank(),
+          axis.text.x = element_blank())
+}
+
+# Flux ribbons
+p_flux <- daily |>
+  pivot_longer(c(GPP, RECO, NEE)) |>
+  ggplot(aes(date, value, colour = name)) +
+  geom_line(linewidth = 0.8) +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "#475569") +
+  scale_colour_manual(values = c(GPP = "#4ade80", RECO = "#f87171", NEE = "#60a5fa")) +
+  labs(y = "gC m⁻² day⁻¹", x = NULL, colour = NULL) +
+  theme_minimal(base_size = 10) +
+  theme(panel.grid.minor = element_blank(),
+        legend.position = "top")
+
+if (!is.null(p_swell)) {
+  p_swell / p_flux + plot_annotation(
+    title = "BREATH simulation — northern Apennines forest",
+    theme = theme(plot.title = element_text(face = "bold", size = 13))
+  )
+} else {
+  p_flux
+}
+```
+
+---
+
+## 6 · Seasonal diagnostics
+
+```{r seasonal}
+seasons <- df |>
+  mutate(season = case_when(
+    month %in% c(12, 1, 2) ~ "DJF",
+    month %in% 3:5          ~ "MAM",
+    month %in% 6:8          ~ "JJA",
+    TRUE                    ~ "SON"
+  )) |>
+  group_by(year, season) |>
+  summarise(
+    T_mean   = round(mean(t,    na.rm = TRUE), 1),
+    P_total  = round(sum(p,     na.rm = TRUE) * 24, 0),  # mm/h → mm/day, summed
+    GPP_mean = round(mean(GPP,  na.rm = TRUE), 3),
+    NEE_mean = round(mean(NEE,  na.rm = TRUE), 3),
+    .groups = "drop"
+  ) |>
+  mutate(season = factor(season, levels = c("DJF","MAM","JJA","SON"))) |>
+  arrange(year, season)
+
+knitr::kable(seasons, caption = "Seasonal diagnostics")
+```
+
+---
+
+## 7 · Phenological dates
+
+When the `Circadian` or `Pheno` model variant is used, the output includes a
+`phenophase` column that can be used to extract phenological dates (DOY).
+
+```{r phenology}
+pheno_col <- grep("phenophase", names(df), ignore.case = TRUE, value = TRUE)[1]
+
+if (!is.na(pheno_col)) {
+  pheno <- df |>
+    rename(phase = all_of(pheno_col)) |>
+    arrange(date) |>
+    group_by(year) |>
+    mutate(prev_phase = lag(phase, default = "")) |>
+    filter(phase != prev_phase) |>
+    summarise(
+      SGS = doy[grepl("Growth",    phase, ignore.case = TRUE)][1],
+      MAT = doy[grepl("Greendown", phase, ignore.case = TRUE)][1],
+      SEN = doy[grepl("Senesc",    phase, ignore.case = TRUE)][1],
+      EGS = doy[grepl("Dorm|Induct", phase, ignore.case = TRUE)][1],
+      .groups = "drop"
+    ) |>
+    mutate(GSL = EGS - SGS)
+
+  knitr::kable(pheno, caption = "Phenological dates (DOY)")
+} else {
+  cat("No phenophase column in output — run with modelVariant='Pheno' or 'Circadian'.\n")
+}
+```
+
+---
+
+## 8 · Multi-pixel grid run
+
+```{r grid-run, eval=FALSE}
+# 3 × 3 grid centred on the pixel, 0.1° step
+lats   <- c(44.08, 44.18, 44.28)
+lons   <- c(10.66, 10.76, 10.86)
+pixels <- as.vector(outer(lats, lons, function(la, lo) sprintf("%.4f_%.4f", la, lo)))
+
+grid_payload <- list(
+  settings = list(
+    pixelsRun           = as.list(pixels),
+    startYear           = 2023L,
+    endYear             = 2023L,
+    inputWeather        = "hourly",
+    modelVariant        = "Circadian",
+    calibration         = FALSE,
+    parametersDataFile  = "photothermalRequirements.csv",
+    simplexes           = 3L,
+    iterations          = 200L,
+    calibrationVariable = "Phenology"
+  )
+)
+
+request(paste0(BASE_URL, "/api/breath/run")) |>
+  req_method("POST") |>
+  req_body_json(grid_payload) |>
+  req_perform()
+
+wait_for_completion(BASE_URL)
+
+csv_grid <- request(paste0(BASE_URL, "/api/results/latest")) |>
+  req_perform() |>
+  resp_body_string()
+
+df_grid <- read_csv(csv_grid, show_col_types = FALSE)
+
+# Annual NEE per pixel (gC m⁻² yr⁻¹)
+nee_px <- df_grid |>
+  group_by(pixel) |>
+  summarise(NEE_annual = round(mean(NEE, na.rm = TRUE) * 86400 * 365 * 12.01e-6, 1)) |>
+  arrange(NEE_annual)
+
+knitr::kable(nee_px)
+```
+
+---
+
+## 9 · Parameter overrides
+
+Override any internal model parameter by passing a `parameterOverrides` map.
+Keys follow the `className_propertyName` convention.
+
+```{r overrides, eval=FALSE}
+tuned_payload <- list(
+  settings = list(
+    pixelsRun           = list(pixel),
+    startYear           = 2023L,
+    endYear             = 2023L,
+    inputWeather        = "hourly",
+    modelVariant        = "Circadian",
+    calibration         = FALSE,
+    parametersDataFile  = "photothermalRequirements.csv",
+    simplexes           = 3L,
+    iterations          = 200L,
+    calibrationVariable = "Phenology"
+  ),
+  parameterOverrides = list(
+    parPhotosynthesis_maximumQuantumYieldOver = 0.08,  # α overstory (default 0.06)
+    parPhotosynthesis_halfSaturationTree      = 350,   # k½ PAR (default 400)
+    parRespiration_referenceRespiration       = 1.2    # R base (default 1.5)
+  )
+)
+
+request(paste0(BASE_URL, "/api/breath/run")) |>
+  req_method("POST") |>
+  req_body_json(tuned_payload) |>
+  req_perform()
+
+wait_for_completion(BASE_URL)
+```
+
+---
+
+## Session info
+
+```{r session}
+sessionInfo()
+```
