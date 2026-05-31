@@ -221,9 +221,16 @@ window.MapPanel = defineComponent({
     document.addEventListener('keydown', this._kbHandler)
 
     this.$nextTick(() => this.toggleSpotlight(10))
+
+    // Automatically re-invalidate when the container actually resizes (CSS transitions)
+    if (typeof ResizeObserver !== 'undefined') {
+      this._resizeObserver = new ResizeObserver(() => this.resize())
+      this._resizeObserver.observe(document.getElementById('leaflet-map'))
+    }
   },
 
   beforeUnmount() {
+    this._resizeObserver?.disconnect()
     this.map?.remove()
     document.removeEventListener('keydown', this._kbHandler)
   },
@@ -231,7 +238,7 @@ window.MapPanel = defineComponent({
   methods: {
     resize() {
       if (!this.map) return
-      this.map.invalidateSize()
+      this.map.invalidateSize({ debounceMoveend: false })
       // Re-center the view at the same position to force all overlays (markers, SVG) to reposition
       this.map.setView(this.map.getCenter(), this.map.getZoom(), { animate: false })
     },

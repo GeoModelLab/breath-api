@@ -51,8 +51,6 @@ namespace runner
         {
             try
             {
-                _log?.Invoke("🚀 BreathRunner starting...");
-
                 if (!File.Exists(configPath))
                     return Err($"Config file not found: {configPath}");
 
@@ -94,10 +92,6 @@ namespace runner
                     parametersDataFile = Path.Combine(dataBase, Path.GetFileName(parametersDataFile));
                 }
 
-                _log?.Invoke($"📂 wwwroot  : {wwwRoot}");
-                _log?.Invoke($"📂 Results  : {resultsDir}");
-                _log?.Invoke($"📂 Params   : {parametersDataFile}");
-
                 if (!File.Exists(parametersDataFile))
                     return Err($"Parameters file not found: {parametersDataFile}");
 
@@ -119,7 +113,7 @@ namespace runner
                     inputWeather        = inputWeather,
                     modelConfiguration  = modelConfiguration,
                 };
-                _log?.Invoke($"⚙️ Model variant: {modelVariantRaw} → configuration: {modelConfiguration}");
+                _log?.Invoke($"[{DateTime.Now:HH:mm:ss}] 🌿 {pixelsRun.Count} pixel(s) · {startYear}–{endYear} · variant: {modelVariantRaw}" + (isCalibration ? " · calibration ON" : ""));
 
                 var paramReader = new paramReader();
                 optimizer.nameParam = paramReader.read(parametersDataFile);
@@ -131,7 +125,7 @@ namespace runner
                     {
                         if (optimizer.nameParam.TryGetValue(kv.Key, out var p))
                         {
-                            _log?.Invoke($"⚙️ Override: {kv.Key} = {kv.Value}");
+                            _log?.Invoke($"[{DateTime.Now:HH:mm:ss}] ⚙ Parameter override: {kv.Key} = {kv.Value}");
                             p.value = kv.Value;
                         }
                     }
@@ -154,7 +148,7 @@ namespace runner
                     string weatherFile  = Path.Combine(resultsDir, $"{pixelPrefix}_weather.csv");
                     string calibFile    = Path.Combine(resultsDir, $"calibParam_{pixelPrefix}.csv");
 
-                    _log?.Invoke($"📍 Pixel: {pixelPrefix}");
+                    _log?.Invoke($"[{DateTime.Now:HH:mm:ss}] 📍 Processing pixel {pixelPrefix}…");
 
                     // ── Weather ───────────────────────────────────────────────────
                     bool needsWeather = true;
@@ -165,7 +159,7 @@ namespace runner
                         // fileStart may be startYear-1 (spin-up); accept if it covers the needed range
                         if (fileStart <= startYear && fileEnd == endYear)
                         {
-                            _log?.Invoke("☀️ Weather cache hit — skipping download.");
+                            _log?.Invoke($"[{DateTime.Now:HH:mm:ss}] ☀️ Weather data loaded from cache.");
                             optimizer.weatherData = await ReadWeatherCsvAsync(weatherFile);
                             needsWeather = false;
                         }
@@ -173,7 +167,7 @@ namespace runner
 
                     if (needsWeather)
                     {
-                        _log?.Invoke($"☀️ Downloading NASA POWER weather for {pixelPrefix}...");
+                        _log?.Invoke($"[{DateTime.Now:HH:mm:ss}] ☀️ Downloading weather from NASA POWER ({inputWeather})…");
                         int fetchStart = startYear > 1980 ? startYear - 1 : startYear;
                         var weatherData = await NasaPower.GetWeatherAsync(
                             lat, lon, fetchStart, endYear, inputWeather);
@@ -194,11 +188,11 @@ namespace runner
                     {
                         if (File.Exists(calibFile))
                         {
-                            _log?.Invoke($"📈 Calibration file found — skipping MODIS download.");
+                            _log?.Invoke($"[{DateTime.Now:HH:mm:ss}] 📈 Calibrated parameters found — skipping MODIS download.");
                         }
                         else
                         {
-                            _log?.Invoke($"🛰️ Downloading MODIS EVI for {pixelPrefix}...");
+                            _log?.Invoke($"[{DateTime.Now:HH:mm:ss}] 🛰 Downloading MODIS EVI composites for calibration…");
                             try
                             {
                                 var eviDict = await ModisEviPoint.GetEviMultiYearAsync(
@@ -207,25 +201,22 @@ namespace runner
 
                                 if (eviDict == null || eviDict.Count == 0)
                                 {
-                                    _log?.Invoke("⚠️ MODIS EVI returned no data — skipping calibration, using default parameters.");
+                                    _log?.Invoke($"[{DateTime.Now:HH:mm:ss}] ⚠️ No MODIS EVI data available — running with default parameters.");
                                     isCalibration = false;
                                 }
                                 else
                                 {
-                                    _log?.Invoke($"📈 MODIS EVI: {eviDict.Count} composites downloaded.");
+                                    _log?.Invoke($"[{DateTime.Now:HH:mm:ss}] 🛰 MODIS EVI: {eviDict.Count} composites loaded.");
                                     optimizer.idPixel[pixel].dateVInorm = eviDict;
                                 }
                             }
                             catch (Exception eviEx)
                             {
-                                _log?.Invoke($"⚠️ MODIS download failed ({eviEx.Message}) — skipping calibration, using default parameters.");
+                                _log?.Invoke($"[{DateTime.Now:HH:mm:ss}] ⚠️ MODIS download failed — running with default parameters.");
                                 isCalibration = false;
                             }
                         }
                     }
-                    else
-                    {
-                        _log?.Invoke($"ℹ️ Calibration off — skipping MODIS EVI download.");
                     }
 
                     var paramCalibValue = new Dictionary<string, float>();
@@ -233,7 +224,7 @@ namespace runner
                     // ── Calibration ───────────────────────────────────────────────
                     if (isCalibration && !File.Exists(calibFile))
                     {
-                        _log?.Invoke($"🔬 Calibrating parameters for {pixelPrefix}...");
+                        _log?.Invoke($"[{DateTime.Now:HH:mm:ss}] 🔬 Calibrating model parameters ({simplexes} restarts × {iterations} iterations)…");
 
                         int paramCalibrated = optimizer.nameParam.Count(
                             x => x.Value.calibration != "");
@@ -274,12 +265,12 @@ namespace runner
                         }
 
                         File.WriteAllLines(calibFile, writeParam);
-                        _log?.Invoke($"💾 Calibration file saved: {calibFile}");
+                        _log?.Invoke($"[{DateTime.Now:HH:mm:ss}] 💾 Best parameters saved.");
                     }
                     else
                     {
                         // Load existing calibrated parameters
-                        _log?.Invoke($"💾 Loading calibrated params from: {calibFile}");
+                        _log?.Invoke($"[{DateTime.Now:HH:mm:ss}] 💾 Loading previously calibrated parameters.");
                         if (File.Exists(calibFile))
                         {
                             foreach (var line in File.ReadAllLines(calibFile).Skip(1))
@@ -311,18 +302,11 @@ namespace runner
                     // ── Forward run ───────────────────────────────────────────────
                     optimizer.isSWELLCalibrated = true;
                     optimizer.oneShot(paramCalibValue, out Dictionary<DateTime, output> dateOutputs);
-                    _log?.Invoke($"✅ Simulation complete for {pixelPrefix}.");
-
-                    // Log public URL
-                    string baseUrl = Environment.GetEnvironmentVariable("RENDER") != null
-                        ? "https://breath-api-thkm.onrender.com"
-                        : "http://localhost:5244";
+                    _log?.Invoke($"[{DateTime.Now:HH:mm:ss}] ✅ Pixel {pixelPrefix} done.");
 
                     string outFile = Path.Combine(resultsDir, $"{pixelPrefix}.csv");
-                    if (File.Exists(outFile))
-                        _log?.Invoke($"🌐 Output: {baseUrl}/output/results/{Path.GetFileName(outFile)}");
-                    else
-                        _log?.Invoke($"⚠️ Expected output not found: {outFile}");
+                    if (!File.Exists(outFile))
+                        _log?.Invoke($"[{DateTime.Now:HH:mm:ss}] ⚠️ Output file not found for {pixelPrefix}.");
                 }
 
                 await File.AppendAllTextAsync(logFile,
@@ -332,7 +316,7 @@ namespace runner
                 // so the results endpoint always returns the complete dataset
                 string latestFile = Path.Combine(resultsDir, "latest_results.csv");
                 await MergePixelCsvsAsync(pixelsRun, resultsDir, latestFile);
-                _log?.Invoke($"📊 Combined output: latest_results.csv ({pixelsRun.Count} pixel(s))");
+                _log?.Invoke($"[{DateTime.Now:HH:mm:ss}] 📊 All pixels complete — combined CSV ready ({pixelsRun.Count} pixel(s)).");
 
                 return JsonSerializer.Serialize(new
                 {
@@ -344,7 +328,7 @@ namespace runner
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"❌ BreathRunner error: {ex.Message}");
+                _log?.Invoke($"[{DateTime.Now:HH:mm:ss}] ❌ Error: {ex.Message}");
                 return JsonSerializer.Serialize(new
                 {
                     Status  = "Error",
