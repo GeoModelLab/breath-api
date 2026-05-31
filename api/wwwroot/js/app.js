@@ -57,7 +57,8 @@ createApp({
 
         <!-- Map column (full height, no log strip) -->
         <div class="map-col">
-          <MapPanel ref="mapPanel" @point-selected="onPoint" @area-selected="onAreaSelected" />
+          <MapPanel ref="mapPanel" @point-selected="onPoint" @area-selected="onAreaSelected"
+                    @history-point-selected="onHistoryPoint" />
         </div>
 
         <!-- Side column: controls (v-show keeps lat/lon state for re-run) -->
@@ -158,7 +159,19 @@ createApp({
 
     onAreaSelected(pixels) {
       this.selectedPixels = pixels
-      this.point = null          // clear single-point when area is drawn
+      this.point = null
+    },
+
+    onHistoryPoint({ lat, lon }) {
+      // Find the cached CSV for this point from the history and re-show its results
+      const entry = this.$refs.mapPanel?.pointHistory?.find(h => h.lat === lat && h.lon === lon)
+      if (!entry) return
+      // Restore state to show results panel
+      if (this.lastCsvText) {
+        this.$refs.results?.loadCsv(this.lastCsvText)
+        this.appState = 'completed'
+        this.$nextTick(() => this.$refs.mapPanel?.resize())
+      }
     },
 
     resetToMap() {
@@ -254,9 +267,26 @@ createApp({
             this.$refs.results.loadCsv(csv)
             this.$refs.log?.append('📊 Results loaded.')
 
-            // Show per-pixel stats on map for grid simulations
-            const stats = this._getPixelStats(csv)
-            this.$refs.mapPanel?.showPixelStats(stats)
+            const pixelStats = this._getPixelStats(csv)
+
+            if (this.selectedPixels.length > 1) {
+              // Grid simulation: show pixel rectangles on map
+              this.$refs.mapPanel?.showPixelStats(pixelStats)
+            } else if (this.point) {
+              // Single point: attach KPIs to the map marker
+              const singleStats = pixelStats[0] ?? null
+              const klimaStats  = this.$refs.results?.climateStats
+              const annStats    = this.$refs.results?.stats
+              const combined    = singleStats
+                ? { ...singleStats,
+                    cue:    annStats?.cue    ?? '—',
+                    koppen: klimaStats?.koppen ?? null }
+                : null
+              const label = this.$refs.mapPanel?.coord || null
+              this.$refs.mapPanel?.attachPointStats(
+                this.point.lat, this.point.lon, combined, label
+              )
+            }
             return
           }
         }
@@ -271,10 +301,11 @@ createApp({
       try {
         const lines = csv.trim().split('\n')
         if (lines.length < 2) return []
-        const hdr  = lines[0].split(',')
-        const pxI  = hdr.indexOf('pixel')
-        const gppI = hdr.indexOf('GPP')
-        const neeI = hdr.indexOf('NEE')
+        const hdr   = lines[0].split(',')
+        const pxI   = hdr.indexOf('pixel')
+        const gppI  = hdr.indexOf('GPP')
+        const neeI  = hdr.indexOf('NEE')
+        const recoI = hdr.indexOf('RECO')
         if (pxI < 0 || gppI < 0) return []
 
         const acc = {}
@@ -282,11 +313,13 @@ createApp({
           const c  = line.split(',')
           const px = c[pxI]?.trim()
           if (!px) continue
-          const g = parseFloat(c[gppI])
-          const n = neeI >= 0 ? parseFloat(c[neeI]) : NaN
-          if (!acc[px]) acc[px] = { g: 0, n: 0, cnt: 0 }
-          if (!isNaN(g)) { acc[px].g += g; acc[px].cnt++ }
-          if (!isNaN(n)) acc[px].n += n
+          const g  = parseFloat(c[gppI])
+          const n  = neeI  >= 0 ? parseFloat(c[neeI])  : NaN
+          const rc = recoI >= 0 ? parseFloat(c[recoI]) : NaN
+          if (!acc[px]) acc[px] = { g: 0, n: 0, rc: 0, cnt: 0 }
+          if (!isNaN(g))  { acc[px].g += g;  acc[px].cnt++ }
+          if (!isNaN(n))    acc[px].n  += n
+          if (!isNaN(rc))   acc[px].rc += rc
         }
 
         return Object.entries(acc).map(([px, d]) => {
@@ -294,9 +327,13 @@ createApp({
           const lat = parseFloat(parts[0])
           const lon = parseFloat(parts[1])
           if (isNaN(lat) || isNaN(lon)) return null
-          // mean hourly → annual gC m⁻² yr⁻¹
           const toAnn = v => Math.round(v / d.cnt * 86400 * 365 * 12.01 / 1e6)
-          return { lat, lon, annGPP: toAnn(d.g), annNEE: toAnn(d.n) }
+          return {
+            lat, lon,
+            annGPP:  toAnn(d.g),
+            annNEE:  toAnn(d.n),
+            annRECO: toAnn(d.rc),
+          }
         }).filter(Boolean)
       } catch { return [] }
     },

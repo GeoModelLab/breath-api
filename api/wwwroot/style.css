@@ -821,3 +821,15 @@ h2 {
 .cs-sname { font-size: 9px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: .06em; }
 .cs-t { font-size: 12px; font-weight: 700; color: #fb7185; }
 .cs-p { font-size: 11px; color: #38bdf8; }
+
+/* Monthly mini-chart inside climate strip */
+.cs-monthly { margin-top: 10px; }
+.cs-monthly-title { font-size: 9px; color: #475569; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
+.cs-monthly-bars { display: flex; gap: 2px; align-items: flex-end; height: 60px; position: relative; }
+.cs-month-col { display: flex; flex-direction: column; align-items: center; flex: 1; position: relative; height: 60px; justify-content: flex-end; }
+.cs-p-bar { width: 100%; min-height: 2px; border-radius: 2px 2px 0 0; }
+.cs-t-dot { position: absolute; width: 5px; height: 5px; background: #fb7185; border-radius: 50%; left: 50%; transform: translateX(-50%); }
+.cs-month-lbl { font-size: 8px; color: #475569; margin-top: 2px; }
+
+/* Grid variable selector */
+.grid-var-sel { background: #0e1520; color: #94a3b8; border: 1px solid #243050; border-radius: 4px; padding: 2px 4px; font-size: 11px; }

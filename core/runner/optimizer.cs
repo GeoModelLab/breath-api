@@ -384,7 +384,11 @@ namespace runner
                                 fmt(wd.solarRadiationH[hour]),
                                 fmt(wd.relativeHumidityH[hour]),
                                 fmt(wd.vaporPressureDeficitH[hour]),
-                                fmt(wd.referenceEvapotranspiration / 24f), // daily ET0 spread over 24h
+                                // hourly ET₀: use measured hourly value when available,
+                                // otherwise spread the daily Hargreaves–Samani total evenly
+                                fmt(wd.referenceET0H != null && wd.referenceET0H[hour] > 0f
+                                    ? wd.referenceET0H[hour]
+                                    : wd.referenceEvapotranspiration / 24f),
 
                                 pheno,
                                 fmt(w.vi / 100),
