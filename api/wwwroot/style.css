@@ -672,6 +672,11 @@ h2 {
   border-radius: 0 6px 6px 0; padding: 8px 12px;
   font-size: 11px; color: #7eb3e8; margin: 6px 0; line-height: 1.6;
 }
+.help-code {
+  background: #0a0f1a; border: 1px solid #1e2d44; border-radius: 6px;
+  padding: 10px 12px; font-size: 10px; font-family: 'Courier New', monospace;
+  color: #94a3b8; line-height: 1.6; overflow-x: auto; white-space: pre; margin: 4px 0;
+}
 
 /* ══════════════════════════════════════════════════════════
    DRAW MODE (area selection)

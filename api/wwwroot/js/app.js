@@ -48,7 +48,7 @@ createApp({
           </button>
 
           <a class="nav-link" href="/swagger" target="_blank">API ↗</a>
-          <button class="help-btn" @click="helpOpen=!helpOpen" title="Help &amp; Tutorial">?</button>
+          <button class="help-btn" @click="helpOpen=!helpOpen; localStorage.setItem('breath_help_seen','1')" title="Help &amp; Tutorial">?</button>
         </div>
       </header>
 
@@ -103,7 +103,7 @@ createApp({
       </div>
 
       <!-- ── Help modal ──────────────────────────────────────── -->
-      <HelpPanel v-if="helpOpen" @close="helpOpen=false" />
+      <HelpPanel v-if="helpOpen" @close="helpOpen=false; localStorage.setItem('breath_help_seen','1')" />
 
     </div>
   `,
@@ -118,7 +118,7 @@ createApp({
       paramsOpen:     false,
       lastPayload:    null,
       lastCsvText:    null,
-      helpOpen:       false,
+      helpOpen:       !localStorage.getItem('breath_help_seen'),
       selectedPixels: [],
       _logLines:      [],     // shared log state for topbar strip
       _sse:           null,
