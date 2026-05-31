@@ -162,14 +162,22 @@ namespace runner.data
                         i++;
                     }
 
-                    // Aggregate daily scalars
-                    inp.airTemperatureMaximum = tVals.Count > 0 ? tVals.Max() : float.NaN;
-                    inp.airTemperatureMinimum = tVals.Count > 0 ? tVals.Min() : float.NaN;
-                    inp.solarRadiation        = radVals.Sum();  // MJ/m²/day
+                    // Aggregate daily scalars — filter NaN before Max/Min so a single
+                    // missing hourly value does not propagate NaN into the daily stats
+                    var validT   = tVals.Where(v => !float.IsNaN(v)).ToList();
+                    var validRad = radVals.Where(v => !float.IsNaN(v)).ToList();
+                    inp.airTemperatureMaximum = validT.Count > 0 ? validT.Max() : float.NaN;
+                    inp.airTemperatureMinimum = validT.Count > 0 ? validT.Min() : float.NaN;
+                    inp.solarRadiation        = validRad.Sum();   // MJ/m²/day
                     inp.PAR                   = inp.solarRadiation * 0.45f;
-                    inp.precipitation         = precVals.Sum(); // mm/day
+                    inp.precipitation         = precVals.Sum();   // mm/day
 
-                    // Compute VPD for each hour (from T and RH)
+                    // Compute VPD and hourly ET₀ (Priestley–Taylor) for each hour
+                    // using the actual measured hourly T and radiation
+                    float gamma  = 0.066f;  // psychrometric constant, kPa °C⁻¹
+                    float alpha  = 1.26f;   // Priestley–Taylor coefficient
+                    float lambda = 2.45f;   // latent heat of vaporisation, MJ kg⁻¹
+                    float et0Sum = 0f;
                     for (int h = 0; h < i; h++)
                     {
                         float t  = inp.airTemperatureH[h];
@@ -179,15 +187,28 @@ namespace runner.data
                         float svp = 0.6108f * (float)Math.Exp(17.27f * t / (t + 237.3f));
                         float avp = svp * rh / 100f;
                         inp.vaporPressureDeficitH[h] = Math.Max(0f, svp - avp);
+
+                        // Priestley–Taylor ET₀ (mm h⁻¹) from hourly radiation
+                        float rs = inp.solarRadiationH[h];   // MJ m⁻² h⁻¹
+                        if (!float.IsNaN(rs) && rs > 0f)
+                        {
+                            float delta = 4098f * svp / (float)Math.Pow(t + 237.3f, 2f);
+                            float et0h  = alpha * (delta / (delta + gamma)) * (rs / lambda);
+                            inp.referenceET0H[h] = Math.Max(0f, et0h);
+                            et0Sum += inp.referenceET0H[h];
+                        }
                     }
 
-                    // Compute daily ET₀ via Hargreaves-Samani (needs ETR from dayLength)
-                    // This sets inp.referenceEvapotranspiration used by waterStressFunction
-                    if (!float.IsNaN(inp.airTemperatureMaximum) && !float.IsNaN(inp.airTemperatureMinimum))
+                    // Daily ET₀ = sum of hourly values; used by waterStressFunction
+                    // Fall back to Hargreaves–Samani when radiation data are missing
+                    if (et0Sum > 0f)
+                    {
+                        inp.referenceEvapotranspiration = et0Sum;
+                    }
+                    else if (!float.IsNaN(inp.airTemperatureMaximum) && !float.IsNaN(inp.airTemperatureMinimum))
                     {
                         var wr = new weatherReader();
                         wr.dayLength(inp, inp.airTemperatureMaximum, inp.airTemperatureMinimum);
-                        // referenceEvapotranspiration is now set inside inp by dayLength()
                     }
 
                     results[date] = inp;

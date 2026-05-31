@@ -25,7 +25,6 @@ const LAND_CLASSES = [
 ]
 
 // Canvas GridLayer: fetches WMS tiles and dims pixels that don't match targetRgb.
-// Gracefully degrades if CORS blocks pixel access.
 function makeSpotlightLayer(targetRgb) {
   const [tr, tg, tb] = targetRgb
   const THRESH = 50
@@ -73,9 +72,16 @@ function makeSpotlightLayer(targetRgb) {
   })
 }
 
+// Color scales for map pixel display
+function neeColor(nee) {
+  return nee < 0 ? '#4ade80' : '#f87171'
+}
+function gppColor() { return '#4ade80' }
+function recoColor() { return '#f87171' }
+
 window.MapPanel = defineComponent({
   name: 'MapPanel',
-  emits: ['point-selected', 'area-selected'],
+  emits: ['point-selected', 'area-selected', 'history-point-selected'],
   template: `
     <div class="map-area">
       <div id="leaflet-map"></div>
@@ -95,6 +101,14 @@ window.MapPanel = defineComponent({
         <span v-if="gridPixels.length && !drawMode" class="grid-pill">
           {{ gridPixels.length }} pixels
         </span>
+
+        <!-- Grid variable selector (only visible when grid results are shown) -->
+        <select v-if="hasGridStats" v-model="gridVar" class="grid-var-sel"
+                @change="refreshGridDisplay" title="Variable shown on grid pixels">
+          <option value="nee">NEE</option>
+          <option value="gpp">GPP</option>
+          <option value="reco">RECO</option>
+        </select>
 
         <div v-if="coord" class="coord-pill">{{ coord }}</div>
         <button class="legend-btn" @click="legendOpen=!legendOpen" title="Map legend">▤</button>
@@ -147,8 +161,18 @@ window.MapPanel = defineComponent({
       gridMarkers:        [],
       gridPixels:         [],
 
-      pixelMarkers: [],
+      // Grid results display
+      pixelMarkers:   [],
+      _lastGridStats: null,
+      gridVar:        'nee',   // variable shown on grid pixels
+
+      // History of simulated single points (kept across re-selections)
+      pointHistory:   [],   // [{ lat, lon, label, stats, marker }]
     }
+  },
+
+  computed: {
+    hasGridStats() { return this._lastGridStats && this._lastGridStats.length > 0 },
   },
 
   mounted() {
@@ -161,10 +185,8 @@ window.MapPanel = defineComponent({
     })
     this.forestLayer.addTo(this.map)
 
-    // Normal click → place point (suppressed during drag)
     this.map.on('click', e => this.onClick(e))
 
-    // Drag-based area selection — mousedown starts the rectangle
     this.__drawMousedown = e => {
       if (!this.drawMode) return
       L.DomEvent.stopPropagation(e)
@@ -176,32 +198,28 @@ window.MapPanel = defineComponent({
     }
     this.map.on('mousedown', this.__drawMousedown)
 
-    // Mousemove: rubber-band preview while dragging
     this.__drawMousemove = e => {
       if (!this.drawMode || !this._drawStart || !this._drawRect) return
       this._drawRect.setBounds(L.latLngBounds(this._drawStart, e.latlng))
     }
     this.map.on('mousemove', this.__drawMousemove)
 
-    // Mouseup: commit the rectangle and build grid
     this.__drawMouseup = e => {
       if (!this.drawMode || !this._drawStart) return
       const bounds = L.latLngBounds(this._drawStart, e.latlng)
       if (this._drawRect) { this.map.removeLayer(this._drawRect); this._drawRect = null }
       this._drawStart         = null
       this.drawMode           = false
-      this._suppressNextClick = true   // swallow the click Leaflet fires after mouseup
+      this._suppressNextClick = true
       L.DomUtil.removeClass(this.map._container, 'crosshair-cursor-active')
       this.map.dragging.enable()
       this._buildGrid(bounds)
     }
     this.map.on('mouseup', this.__drawMouseup)
 
-    // ESC cancels draw mode
     this._kbHandler = e => { if (e.key === 'Escape') this.cancelDraw() }
     document.addEventListener('keydown', this._kbHandler)
 
-    // Default: highlight TreeCover (class 10)
     this.$nextTick(() => this.toggleSpotlight(10))
   },
 
@@ -213,18 +231,14 @@ window.MapPanel = defineComponent({
   methods: {
     resize() { this.map?.invalidateSize() },
 
-    // ── Forest toggle ──────────────────────────────────────────────────────
     toggleForest() {
       this.forestOn = !this.forestOn
       if (this.forestOn) this.forestLayer.addTo(this.map)
       else this.map.removeLayer(this.forestLayer)
     },
 
-    // ── Click handler — only fires for real point clicks ──────────────────
     onClick(e) {
-      // Swallow the click event that Leaflet fires after a drag mouseup
       if (this._suppressNextClick) { this._suppressNextClick = false; return }
-      // Ignore clicks while draw mode is active (handled by mousedown/mouseup)
       if (this.drawMode) return
 
       const { lat, lng: lon } = e.latlng
@@ -232,6 +246,8 @@ window.MapPanel = defineComponent({
       this.forestWarn = false
       this.gridMarkers.forEach(m => this.map.removeLayer(m))
       this.gridMarkers = []; this.gridPixels = []
+
+      // Remove current (un-simulated) marker if present
       if (this.marker) this.map.removeLayer(this.marker)
       this.marker = L.marker([lat, lon], { icon: MARKER_ICON })
         .addTo(this.map).bindPopup(`<b>${this.coord}</b>`).openPopup()
@@ -242,14 +258,31 @@ window.MapPanel = defineComponent({
       fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`)
         .then(r => r.json())
         .then(d => {
+          const addr = d.address ?? {}
+          const place = addr.natural || addr.forest || addr.wood || addr.nature_reserve
+                     || addr.village || addr.town || addr.city || addr.county
           const parts = [
-            d.address?.village || d.address?.town || d.address?.city || d.address?.county,
-            d.address?.state,
-            d.address?.country
+            place,
+            addr.state,
+            addr.country
           ].filter(Boolean)
-          this.coord = parts.join(', ') + ` (${lat.toFixed(3)}° ${lon.toFixed(3)}°)`
+          const label = parts.join(', ')
+          const coordStr = `${lat.toFixed(3)}°N ${lon.toFixed(3)}°E`
+          this.coord = label ? `${label} (${coordStr})` : coordStr
+          // Update the current marker popup with enriched info
+          if (this.marker) {
+            this.marker.getPopup()?.setContent(
+              `<div style="font-family:monospace;font-size:11px;line-height:1.7">
+                <b>${place || coordStr}</b><br>
+                ${addr.state ? addr.state + ', ' : ''}${addr.country || ''}<br>
+                <span style="color:#94a3b8">${coordStr}</span>
+              </div>`
+            )
+          }
+          // Save the enriched label for history
+          this._pendingLabel = this.coord
         })
-        .catch(() => {}) // keep existing coord on error
+        .catch(() => { this._pendingLabel = null })
     },
 
     async checkForest(lat, lon) {
@@ -306,11 +339,13 @@ window.MapPanel = defineComponent({
           if (this.gridPixels.length >= 25) break
           const latR = +lat.toFixed(4), lonR = +lon.toFixed(4)
           this.gridPixels.push(`${latR}_${lonR}`)
-          const m = L.circleMarker([latR, lonR], {
-            radius: 5, color: '#1e3a5f', weight: 1.5,
-            fillColor: '#60a5fa', fillOpacity: 0.85,
-          }).bindTooltip(`${latR}°N ${lonR}°E`, { className: 'leaf-tip' }).addTo(this.map)
-          this.gridMarkers.push(m)
+          // Show as a square "pixel" (half-step padding) instead of a point
+          const half = step / 2
+          const rect = L.rectangle(
+            [[latR - half, lonR - half], [latR + half, lonR + half]],
+            { color: '#1e3a5f', weight: 1.5, fillColor: '#60a5fa', fillOpacity: 0.45 }
+          ).bindTooltip(`${latR}°N ${lonR}°E`, { className: 'leaf-tip' }).addTo(this.map)
+          this.gridMarkers.push(rect)
         }
         if (this.gridPixels.length >= 25) break
       }
@@ -334,26 +369,121 @@ window.MapPanel = defineComponent({
       this._spotlightLayer = new SpotlightLayer({ opacity: 1, zIndex: 300 }).addTo(this.map)
     },
 
+    // ── Attach simulation KPIs to the current single-point marker ──────────
+    attachPointStats(lat, lon, stats, label) {
+      // Remove any existing un-KPI-ed marker at same coords
+      const existing = this.pointHistory.find(h => h.lat === lat && h.lon === lon)
+      if (existing) {
+        // Update existing history entry
+        existing.stats = stats
+        existing.label = label || existing.label
+        this._refreshHistoryMarker(existing)
+        return
+      }
+
+      // Replace the plain marker with a KPI-enriched circle marker
+      if (this.marker) { this.map.removeLayer(this.marker); this.marker = null }
+
+      const entry = { lat, lon, label: label || `${lat.toFixed(3)}°N ${lon.toFixed(3)}°E`, stats }
+      this._refreshHistoryMarker(entry)
+      this.pointHistory.push(entry)
+    },
+
+    _refreshHistoryMarker(entry) {
+      if (entry.marker) { this.map.removeLayer(entry.marker); entry.marker = null }
+      const { lat, lon, label, stats } = entry
+      const fill = (stats?.annNEE ?? 0) < 0 ? '#4ade80' : '#f87171'
+      entry.marker = L.circleMarker([lat, lon], {
+        radius: 10, color: '#0a0d14', weight: 2,
+        fillColor: fill, fillOpacity: 0.85,
+      }).bindPopup(
+        `<div style="font-family:monospace;font-size:11px;line-height:1.9;min-width:180px">
+          <b style="color:#e2e8f0">${label}</b><br>
+          <span style="color:#4ade80">GPP ${stats?.annGPP ?? '—'} gC m⁻² yr⁻¹</span><br>
+          <span style="color:#f87171">RECO ${stats?.annRECO ?? '—'} gC m⁻² yr⁻¹</span><br>
+          <span style="color:${fill}">NEE ${stats?.annNEE ?? '—'} gC m⁻² yr⁻¹</span><br>
+          <span style="color:#94a3b8">CUE ${stats?.cue ?? '—'}</span><br>
+          ${stats?.koppen ? `<span style="color:#a78bfa">🌍 ${stats.koppen}</span><br>` : ''}
+          <a href="#" onclick="event.preventDefault()" style="color:#60a5fa;font-size:10px"
+             data-lat="${lat}" data-lon="${lon}">📊 View results</a>
+        </div>`
+      ).on('popupopen', (ev) => {
+        // Wire up the "View results" link inside the popup
+        const link = ev.popup.getElement()?.querySelector('[data-lat]')
+        if (link) {
+          link.addEventListener('click', () => {
+            this.$emit('history-point-selected', { lat, lon })
+          })
+        }
+      }).addTo(this.map)
+    },
+
     // ── Multi-pixel result display ─────────────────────────────────────────
     showPixelStats(stats) {
+      this._lastGridStats = stats
       this.pixelMarkers.forEach(m => this.map.removeLayer(m))
       this.pixelMarkers = []
       if (!stats || stats.length < 1) return
-      const maxAbs = Math.max(1, ...stats.map(s => Math.abs(s.annNEE)))
-      for (const s of stats) {
-        const t    = Math.abs(s.annNEE) / maxAbs
-        const fill = s.annNEE < 0 ? '#4ade80' : '#f87171'
-        const m = L.circleMarker([s.lat, s.lon], {
-          radius: 10 + t * 12, color: '#0a0d14', weight: 1.5,
-          fillColor: fill, fillOpacity: 0.72 + t * 0.2,
-        }).bindPopup(
+      this._renderGridVar()
+    },
+
+    refreshGridDisplay() {
+      this._renderGridVar()
+    },
+
+    _renderGridVar() {
+      this.pixelMarkers.forEach(m => this.map.removeLayer(m))
+      this.pixelMarkers = []
+      const stats = this._lastGridStats
+      if (!stats || !stats.length) return
+
+      const varKey = this.gridVar   // 'nee' | 'gpp' | 'reco'
+      const values = stats.map(s => {
+        if (varKey === 'nee')  return s.annNEE  ?? 0
+        if (varKey === 'gpp')  return s.annGPP  ?? 0
+        if (varKey === 'reco') return s.annRECO ?? 0
+        return 0
+      })
+      const maxAbs = Math.max(1, ...values.map(v => Math.abs(v)))
+
+      // Pixel step is 0.1° by default; try to infer from data
+      const step = 0.1
+
+      for (let i = 0; i < stats.length; i++) {
+        const s   = stats[i]
+        const val = values[i]
+        const t   = Math.abs(val) / maxAbs
+
+        let fill, label
+        if (varKey === 'nee') {
+          fill  = val < 0 ? '#4ade80' : '#f87171'
+          label = `NEE ${val} gC m⁻² yr⁻¹`
+        } else if (varKey === 'gpp') {
+          const g = Math.round(t * 200)
+          fill  = `rgb(${255-g},${100+g},${50})`
+          label = `GPP ${val} gC m⁻² yr⁻¹`
+        } else {
+          const g = Math.round(t * 200)
+          fill  = `rgb(${100+g},${50},${50})`
+          label = `RECO ${val} gC m⁻² yr⁻¹`
+        }
+
+        const half = step / 2
+        const rect = L.rectangle(
+          [[s.lat - half, s.lon - half], [s.lat + half, s.lon + half]],
+          {
+            color: '#0a0d14', weight: 1,
+            fillColor: fill, fillOpacity: 0.72 + t * 0.2,
+          }
+        ).bindPopup(
           `<div style="font-family:monospace;font-size:11px;line-height:1.7">
             <b>${s.lat.toFixed(2)}°N  ${s.lon.toFixed(2)}°E</b><br>
             <span style="color:#4ade80">GPP ${s.annGPP} gC m⁻² yr⁻¹</span><br>
+            <span style="color:#f87171">RECO ${s.annRECO ?? '—'} gC m⁻² yr⁻¹</span><br>
             <span style="color:${s.annNEE<0?'#4ade80':'#f87171'}">NEE ${s.annNEE} gC m⁻² yr⁻¹</span>
           </div>`
         ).addTo(this.map)
-        this.pixelMarkers.push(m)
+        this.pixelMarkers.push(rect)
       }
     },
   },

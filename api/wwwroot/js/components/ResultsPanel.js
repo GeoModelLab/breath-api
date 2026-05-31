@@ -5,11 +5,9 @@ const { defineComponent, nextTick } = Vue
 function mean(arr) { return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0 }
 const EXCLUDE_COLS  = new Set(['year','hour','date','pixel','doy'])
 const STRING_COLS   = new Set(['phenophase','phenoPhase'])
-// Variables excluded from the chart toggle panel
 const HIDDEN_VARS  = new Set(['tleafover','tleafunder','phenophase','phenoPhase'])
 
 function hexA(hex, a) {
-  // append 2-digit alpha to a #rrggbb hex string → #rrggbbaa
   return hex + Math.round(a * 255).toString(16).padStart(2,'0')
 }
 
@@ -50,7 +48,6 @@ function varColor(name) {
   return '#64748b'
 }
 
-// ── variable units ───────────────────────────────────────
 const VAR_UNITS = {
   gpp:'µmol m⁻² s⁻¹', gppover:'µmol m⁻² s⁻¹', gppunder:'µmol m⁻² s⁻¹',
   reco:'µmol m⁻² s⁻¹', recoover:'µmol m⁻² s⁻¹', recounder:'µmol m⁻² s⁻¹',
@@ -68,7 +65,6 @@ const VAR_UNITS = {
 }
 function varUnit(name) { return VAR_UNITS[name.toLowerCase()] ?? '' }
 
-// ── chart assignment ─────────────────────────────────────────
 const IS_FLUX    = n => /^(gpp|reco|nee|gppover|gppunder|recoover|recounder|recohetero|trecoref|recotandws|recogpp)$/i.test(n)
 const IS_WEATHER = n => /^(t|sw|p|rh|vpd|et0|soilt|tleafover|tleafunder)$/i.test(n)
 
@@ -77,7 +73,6 @@ function yAxisFor(chart, name) {
   return (chart === 'swell' && IS_WEATHER(name)) ? 'yRight' : 'yLeft'
 }
 
-// ── aggregation ──────────────────────────────────────────────
 function dailyAgg(rows, cols) {
   const d = {}
   for (const r of rows) {
@@ -87,18 +82,7 @@ function dailyAgg(rows, cols) {
   return Object.entries(d).sort(([a],[b])=>a<b?-1:1)
     .map(([date,v]) => { const row={date}; cols.forEach(c=>{ row[c]=mean(v[c]) }); return row })
 }
-function monthlyAgg(daily, cols) {
-  const m = {}
-  for (const r of daily) {
-    const k = r.date.slice(0,7)
-    if (!m[k]) { m[k]={date:k+'-15'}; cols.forEach(c=>{ m[k][c]=[] }) }
-    cols.forEach(c => m[k][c].push(r[c]))
-  }
-  return Object.values(m).sort((a,b)=>a.date<b.date?-1:1)
-    .map(r => { const row={date:r.date}; cols.forEach(c=>{ row[c]=mean(r[c]) }); return row })
-}
 
-// ── SWELL var groups ─────────────────────────────────────────
 const SWELL_GROUPS = [
   { label:'Phenology',  match: n => /^swell$|reference|vegetationcover|phenoscale|phenologyscale|phenoreco|lai/i.test(n) },
   { label:'Scalers ×',  match: n => /tscale|parscale|waterstress|vpdscale/i.test(n) },
@@ -119,6 +103,59 @@ function makeGroups(cols, groupDefs) {
   const rest = cols.filter(c => !used.has(c))
   if (rest.length) result.push({ label:'Other', cols: rest })
   return result
+}
+
+// ── Full Köppen-Geiger classification ───────────────────────────────────
+function koppenClassify(annT, tCold, tWarm, annP, pMonthly, tMonthly) {
+  if (tMonthly.filter(v => v != null).length === 0) return '—'
+  const P = parseFloat(annP)
+  const T = parseFloat(annT)
+
+  // Polar
+  if (tWarm < 10) return tWarm < 0 ? 'EF (Ice cap)' : 'ET (Tundra)'
+
+  // Arid threshold
+  const pSummer = pMonthly.slice(3,9).filter(v=>v!=null).reduce((a,b)=>a+b,0)
+  const pWinter = [...pMonthly.slice(0,3), ...pMonthly.slice(9)].filter(v=>v!=null).reduce((a,b)=>a+b,0)
+  const summerHeavy = pSummer > pWinter * 2.33
+  const winterHeavy = pWinter > pSummer * 2.33
+  let pThresh = summerHeavy ? 2*T + 28 : winterHeavy ? 2*T : 2*T + 14
+  pThresh *= 10   // monthly→annual (×12 already factored in above)
+
+  if (P < pThresh / 2) return T < 18 ? 'BSk (Cold steppe)' : 'BSh (Hot steppe)'
+  if (P < pThresh)     return T < 18 ? 'BWk (Cold desert)' : 'BWh (Hot desert)'
+
+  // Tropical
+  if (tCold >= 18) {
+    const pDry = Math.min(...pMonthly.filter(v=>v!=null))
+    if (pDry >= 60) return 'Af (Tropical rainforest)'
+    if (pDry >= 100 - P / 25) return 'Am (Tropical monsoon)'
+    return 'Aw (Tropical savanna)'
+  }
+
+  // Temperate / Continental
+  const hasDrySummer = pMonthly.slice(3,9).some((v,i,a)=>v!=null && v < 40 && v < pMonthly[i+9] / 3) ||
+                       Math.min(...pMonthly.slice(3,9).filter(v=>v!=null)) < 30
+  const hasDryWinter = [...pMonthly.slice(0,3), ...pMonthly.slice(9)]
+                         .some((v,i,a) => v != null && v < 10)
+
+  const hotSummer  = tWarm >= 22
+  const warmSummer = tMonthly.filter(v=>v!=null).filter(v=>v>=10).length >= 4
+
+  if (tCold > -3) {
+    // Temperate (C)
+    if (hasDrySummer) return hotSummer ? 'Csa (Hot-summer Mediterranean)' : 'Csb (Warm-summer Mediterranean)'
+    if (hasDryWinter) return hotSummer ? 'Cwa (Humid subtropical)' : 'Cwb (Subtropical highland)'
+    return hotSummer ? 'Cfa (Humid subtropical)' : warmSummer ? 'Cfb (Oceanic)' : 'Cfc (Subpolar oceanic)'
+  } else {
+    // Continental (D)
+    if (hasDrySummer) return hotSummer ? 'Dsa (Continental hot-dry summer)' : 'Dsb/Dsc (Continental dry summer)'
+    if (hasDryWinter) return hotSummer ? 'Dwa (Humid continental)' : 'Dwb/Dwc (Continental dry winter)'
+    if (hotSummer)    return 'Dfa (Hot-summer humid continental)'
+    if (warmSummer)   return 'Dfb (Warm-summer humid continental)'
+    if (tCold > -38)  return 'Dfc (Subarctic)'
+    return 'Dfd/Dwd (Extreme subarctic)'
+  }
 }
 
 // ── component ────────────────────────────────────────────────
@@ -157,10 +194,15 @@ window.ResultsPanel = defineComponent({
             <div class="metric-value">{{ stats.peakGPP }}</div>
             <div class="metric-unit">µmol m⁻² s⁻¹</div>
           </div>
-          <div class="metric-card" style="grid-column:1/3">
-            <div class="metric-label">Carbon Use Efficiency (CUE = GPP/RECO)</div>
+          <div class="metric-card" style="grid-column:1/2">
+            <div class="metric-label">CUE (GPP/RECO)</div>
             <div class="metric-value" style="font-size:1.4em">{{ stats.cue }}</div>
-            <div class="metric-unit">dimensionless · 1 = perfect sink</div>
+            <div class="metric-unit">dimensionless · &gt;1 = net sink</div>
+          </div>
+          <div class="metric-card" style="grid-column:2/3">
+            <div class="metric-label">iNEE variability</div>
+            <div class="metric-value" style="font-size:1.4em">{{ stats.neeCV }}</div>
+            <div class="metric-unit">CV% inter-annual</div>
           </div>
         </div>
 
@@ -179,6 +221,17 @@ window.ResultsPanel = defineComponent({
               <span class="cs-p">{{ climateStats.annP }} mm</span>
             </div>
           </div>
+          <!-- Monthly climate mini-chart -->
+          <div class="cs-monthly">
+            <div class="cs-monthly-title">Monthly T (°C) &amp; P (mm)</div>
+            <div class="cs-monthly-bars">
+              <div v-for="(m, i) in climateStats.monthly" :key="i" class="cs-month-col">
+                <div class="cs-p-bar" :style="'height:'+m.pH+'px;background:#38bdf8'" :title="MONTH_NAMES[i]+' P: '+m.p+' mm'"></div>
+                <div class="cs-t-dot" :style="'bottom:'+m.tPos+'px'" :title="MONTH_NAMES[i]+' T: '+m.t+'°C'"></div>
+                <div class="cs-month-lbl">{{ MONTH_NAMES[i][0] }}</div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- ── Per-year KPI table ── -->
@@ -190,11 +243,9 @@ window.ResultsPanel = defineComponent({
           <table v-if="showYearTable" class="year-table">
             <thead>
               <tr>
-                <th>Year</th>
-                <th>GPP</th>
-                <th>RECO</th>
-                <th>NEE</th>
-                <th>Balance</th>
+                <th>Year</th><th>GPP</th><th>RECO</th><th>NEE</th>
+                <th title="Carbon Use Efficiency">CUE</th>
+                <th>T mean</th><th>P total</th><th>Balance</th>
               </tr>
             </thead>
             <tbody>
@@ -204,6 +255,9 @@ window.ResultsPanel = defineComponent({
                 <td class="yr-gpp">{{ y.gpp }}</td>
                 <td class="yr-reco">{{ y.reco }}</td>
                 <td :class="['yr-nee', y.isSink ? 'yr-nee-sink' : 'yr-nee-src']">{{ y.nee }}</td>
+                <td>{{ y.cue }}</td>
+                <td>{{ y.tMean ?? '—' }}°C</td>
+                <td>{{ y.pTotal ?? '—' }} mm</td>
                 <td class="yr-badge">
                   <span :class="y.isSink ? 'sink-chip' : 'src-chip'">
                     {{ y.isSink ? 'sink' : 'source' }}
@@ -213,8 +267,8 @@ window.ResultsPanel = defineComponent({
             </tbody>
             <tfoot>
               <tr class="yr-unit">
-                <td colspan="4">All values gC m⁻² yr⁻¹</td>
-                <td></td>
+                <td colspan="4">GPP/RECO/NEE in gC m⁻² yr⁻¹</td>
+                <td colspan="4"></td>
               </tr>
             </tfoot>
           </table>
@@ -230,11 +284,11 @@ window.ResultsPanel = defineComponent({
             <thead>
               <tr>
                 <th>Year</th>
-                <th title="Start of Growing Season — first day phenoCode=Growth">SGS</th>
-                <th title="Maturity — first day phenoCode=Greendown">MAT</th>
+                <th title="Start of Growing Season">SGS</th>
+                <th title="Maturity — first day Greendown">MAT</th>
                 <th title="Start of Senescence">SEN</th>
-                <th title="End of Growing Season — return to Dormancy">EGS</th>
-                <th title="Growing Season Length (EGS−SGS)">GSL</th>
+                <th title="End of Growing Season">EGS</th>
+                <th title="Growing Season Length">GSL</th>
               </tr>
             </thead>
             <tbody>
@@ -248,12 +302,12 @@ window.ResultsPanel = defineComponent({
               </tr>
             </tbody>
             <tfoot>
-              <tr class="yr-unit"><td colspan="6">DOY (day of year) · GSL in days</td></tr>
+              <tr class="yr-unit"><td colspan="6">DOY · GSL in days</td></tr>
             </tfoot>
           </table>
         </div>
 
-        <!-- ── Toolbar (shared between both charts) ── -->
+        <!-- ── Toolbar ── -->
         <div class="charts-toolbar">
           <select v-model="chartType">
             <option value="line">Line</option>
@@ -269,18 +323,31 @@ window.ResultsPanel = defineComponent({
           <span class="toolbar-info">{{ visibleDays }} pts</span>
           <div class="agg-toggle">
             <button :class="['agg-btn', aggMode==='daily'  && 'active']" @click="aggMode='daily'">Day</button>
-            <button :class="['agg-btn', aggMode==='hourly' && 'active']" @click="aggMode='hourly'" :title="!dateFrom && !dateTo ? 'Set a date range first for best performance' : ''">Hr</button>
+            <button :class="['agg-btn', aggMode==='hourly' && 'active']" @click="aggMode='hourly'">Hr</button>
           </div>
           <a href="/api/results/latest" download="breath_results.csv"
              class="btn-outline btn-sm" style="margin-left:4px;text-decoration:none">⬇ CSV</a>
-          <button class="chart-zoom-reset" @click="resetAllZoom" title="Reset zoom (Ctrl+scroll to zoom)">⤢</button>
+          <button class="chart-zoom-reset" @click="resetAllZoom" title="Reset zoom">⤢</button>
+          <!-- 3D toggle -->
+          <button :class="['agg-btn', show3D && 'active']" @click="toggle3D" title="3D surface (DOY × Hour)">🌐 3D</button>
         </div>
 
         <!-- ── Charts + Variable panel ── -->
         <div class="charts-layout">
 
-          <!-- Left: two stacked charts -->
           <div class="charts-area">
+
+            <!-- 3D surface panel -->
+            <div v-if="show3D" class="chart-card chart-card-tall" style="margin-bottom:8px">
+              <div class="chart-hd">
+                <span class="chart-title-tag" style="background:#6366f1">3D</span>
+                <span class="chart-subtitle-tag">Seasonal × Diurnal cycle (DOY × Hour)</span>
+                <select v-model="var3D" @change="build3D" class="var3d-sel" style="margin-left:8px;font-size:11px;background:#1e2d44;color:#94a3b8;border:1px solid #243050;border-radius:4px;padding:2px 4px">
+                  <option v-for="v in numeric3DVars" :key="v" :value="v">{{ v }}</option>
+                </select>
+              </div>
+              <div class="chart-body" ref="surf3D" style="min-height:320px"></div>
+            </div>
 
             <!-- SWELL chart -->
             <div class="chart-card chart-card-tall">
@@ -323,8 +390,6 @@ window.ResultsPanel = defineComponent({
 
           <!-- Right: variable toggle panel -->
           <div class="var-panel">
-
-            <!-- SWELL section -->
             <div class="var-section-hd">
               <span class="var-section-dot swell-dot"></span> SWELL
             </div>
@@ -344,7 +409,6 @@ window.ResultsPanel = defineComponent({
 
             <div class="var-divider"></div>
 
-            <!-- FLUXES section -->
             <div class="var-section-hd">
               <span class="var-section-dot flux-dot"></span> FLUXES
             </div>
@@ -358,7 +422,6 @@ window.ResultsPanel = defineComponent({
                 <span :class="['var-sw', isFluxOn(col) && 'on']"></span>
               </div>
             </div>
-
           </div>
 
         </div>
@@ -370,7 +433,7 @@ window.ResultsPanel = defineComponent({
     return {
       hourly:        [],
       numericCols:   [],
-      aggMode:       'daily',   // 'daily' | 'hourly'
+      aggMode:       'daily',
       chartType:     'line',
       swellDatasets: ['SWELL'],
       fluxDatasets:  ['GPP','RECO','NEE'],
@@ -383,6 +446,9 @@ window.ResultsPanel = defineComponent({
       _csvKey:       0,
       showYearTable:  false,
       showPhenoTable: false,
+      show3D:         false,
+      var3D:          'GPP',
+      MONTH_NAMES:    ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
     }
   },
 
@@ -392,11 +458,9 @@ window.ResultsPanel = defineComponent({
 
     agg() {
       if (this.aggMode === 'hourly') {
-        // Hourly: limit to date filter range to keep rendering fast
         let d = this.hourly
         if (this.dateFrom) d = d.filter(r => r.date >= this.dateFrom)
         if (this.dateTo)   d = d.filter(r => r.date <= this.dateTo)
-        // Safety cap: max 90 days of hourly = 2160 points
         if (d.length > 90 * 24) d = d.slice(-90 * 24)
         return d
       }
@@ -404,7 +468,7 @@ window.ResultsPanel = defineComponent({
     },
 
     filteredAgg() {
-      if (this.aggMode === 'hourly') return this.agg   // already filtered in agg
+      if (this.aggMode === 'hourly') return this.agg
       let d = this.daily
       if (this.dateFrom) d = d.filter(r => r.date >= this.dateFrom)
       if (this.dateTo)   d = d.filter(r => r.date <= this.dateTo)
@@ -428,11 +492,25 @@ window.ResultsPanel = defineComponent({
       const toGC = arr => Math.round(arr.reduce((a,b)=>a+b,0) * 86400 * 12.01 / 1e6 / nYears)
       const annGPP  = toGC(gpp)
       const annRECO = toGC(reco)
+      const annNEE  = toGC(nee)
+
+      // Inter-annual NEE coefficient of variation
+      let neeCV = '—'
+      if (this.yearlyStats.length > 1) {
+        const neeVals = this.yearlyStats.map(y => y.nee).filter(v => v != null)
+        if (neeVals.length > 1) {
+          const m = neeVals.reduce((a,b)=>a+b,0)/neeVals.length
+          const sd = Math.sqrt(neeVals.map(v=>(v-m)**2).reduce((a,b)=>a+b,0)/neeVals.length)
+          neeCV = m !== 0 ? Math.abs(sd/m*100).toFixed(0) : '—'
+        }
+      }
+
       return {
-        annNEE:  toGC(nee), annGPP, annRECO,
+        annNEE, annGPP, annRECO,
         peakGPP: +Math.max(0,...gpp).toFixed(2), nDays,
         filtered: !!(this.dateFrom || this.dateTo),
         cue: annGPP && annRECO ? (annGPP / annRECO).toFixed(2) : '—',
+        neeCV,
       }
     },
 
@@ -446,9 +524,11 @@ window.ResultsPanel = defineComponent({
       return makeGroups(cols, FLUX_GROUPS)
     },
 
-    // ── Phenological metrics (per year, from hourly rows) ──────────────
+    numeric3DVars() {
+      return this.numericCols.filter(c => !HIDDEN_VARS.has(c.toLowerCase()) && !EXCLUDE_COLS.has(c.toLowerCase()))
+    },
+
     phenoMetrics() {
-      // find phenoPhase column key (case-insensitive)
       const phaseKey = this.hourly.length
         ? Object.keys(this.hourly[0]).find(k => k.toLowerCase() === 'phenophase') ?? null
         : null
@@ -462,7 +542,7 @@ window.ResultsPanel = defineComponent({
       }
 
       const byYear = {}
-      const prevPhase = {}  // track previous phase per year for transition detection
+      const prevPhase = {}
 
       for (const r of this.hourly) {
         const yr = r.date?.slice(0,4); if (!yr) continue
@@ -472,22 +552,11 @@ window.ResultsPanel = defineComponent({
         const prev = prevPhase[yr] ?? ''
         const doy  = r.doy ?? doyFromDate(r.date)
         if (!doy) { prevPhase[yr] = cur; continue }
-
-        const changed = cur !== prev   // true at phase transition
-
-        // SGS: enter Growth (phenoCode 3)
-        if (m.sgs == null && /growth/i.test(cur) && changed)
-          m.sgs = doy
-        // MAT: enter Greendown (phenoCode 4) after SGS
-        if (m.mat == null && /green/i.test(cur) && changed && m.sgs != null)
-          m.mat = doy
-        // SEN: transition 4→5 (Greendown→Senescence)
-        if (m.sen == null && /senesci/i.test(cur) && changed)
-          m.sen = doy
-        // EGS: return to Dormancy after growing season (no SEN required)
-        if (m.egs == null && /dorm|induct/i.test(cur) && changed && m.mat != null)
-          m.egs = doy
-
+        const changed = cur !== prev
+        if (m.sgs == null && /growth/i.test(cur) && changed)        m.sgs = doy
+        if (m.mat == null && /green/i.test(cur) && changed && m.sgs != null) m.mat = doy
+        if (m.sen == null && /senesci/i.test(cur) && changed)        m.sen = doy
+        if (m.egs == null && /dorm|induct/i.test(cur) && changed && m.mat != null) m.egs = doy
         prevPhase[yr] = cur
       }
 
@@ -498,77 +567,74 @@ window.ResultsPanel = defineComponent({
         }))
     },
 
-    // ── Köppen-Geiger + Seasonal statistics ──────────────────
     climateStats() {
       if (!this.daily.length) return null
 
-      // Raggruppa per mese
       const monthly = {}
       for (const r of this.daily) {
         const m = r.date?.slice(5,7); if (!m) continue
         if (!monthly[m]) monthly[m] = { t:[], p:[] }
+        // p is mm/h → convert to mm/day (*24)
         if (r.t != null) monthly[m].t.push(r.t)
-        if (r.p != null) monthly[m].p.push(r.p)
+        if (r.p != null) monthly[m].p.push(r.p * 24)
       }
 
-      // Medie mensili T e somme P (mm/month)
       const months = Array.from({length:12}, (_,i) => String(i+1).padStart(2,'0'))
-      const tMonthly = months.map(m => monthly[m]?.t?.length ? monthly[m].t.reduce((a,b)=>a+b,0)/monthly[m].t.length : null)
-      const pMonthly = months.map(m => monthly[m]?.p?.length ? monthly[m].p.reduce((a,b)=>a+b,0)*30 : null) // mm/month approx
+      const tMonthly = months.map(m => monthly[m]?.t?.length
+        ? monthly[m].t.reduce((a,b)=>a+b,0)/monthly[m].t.length : null)
+      const pMonthly = months.map(m => monthly[m]?.p?.length
+        ? monthly[m].p.reduce((a,b)=>a+b,0) / (monthly[m].p.length / 30)  // mm/month
+        : null)
 
-      // Stagioni (DJF, MAM, JJA, SON) — T e P
-      const seas = {
-        DJF: [11,0,1], MAM:[2,3,4], JJA:[5,6,7], SON:[8,9,10]
-      }
+      // Seasonal (DJF, MAM, JJA, SON)
+      const seas = { DJF:[11,0,1], MAM:[2,3,4], JJA:[5,6,7], SON:[8,9,10] }
       const seasonal = {}
       for (const [s, idxs] of Object.entries(seas)) {
         const tVals = idxs.flatMap(i => monthly[months[i]]?.t ?? [])
         const pVals = idxs.flatMap(i => monthly[months[i]]?.p ?? [])
+        const pMm = pVals.length ? (pVals.reduce((a,b)=>a+b,0) / (pVals.length / 30) * 3) : 0
         seasonal[s] = {
           t: tVals.length ? (tVals.reduce((a,b)=>a+b,0)/tVals.length).toFixed(1) : '—',
-          p: pVals.length ? (pVals.reduce((a,b)=>a+b,0)*10).toFixed(0) : '—'  // mm/season approx
+          p: pMm.toFixed(0)
         }
       }
 
       const tAnn = tMonthly.filter(v=>v!=null)
       const annT = tAnn.length ? (tAnn.reduce((a,b)=>a+b,0)/tAnn.length).toFixed(1) : '—'
-      const annP = pMonthly.filter(v=>v!=null).reduce((a,b)=>a+b,0).toFixed(0)
-      const tCold = Math.min(...tMonthly.filter(v=>v!=null))
-      const tWarm = Math.max(...tMonthly.filter(v=>v!=null))
-      const pDry  = Math.min(...pMonthly.filter(v=>v!=null))
+      const annP = pMonthly.filter(v=>v!=null).reduce((a,b)=>a+(b??0),0).toFixed(0)
+      const tCold = tAnn.length ? Math.min(...tAnn) : 0
+      const tWarm = tAnn.length ? Math.max(...tAnn) : 0
 
-      // Köppen-Geiger semplificato
-      let koppen = '—'
-      if (tAnn.length > 0) {
-        const T = parseFloat(annT)
-        const P = parseFloat(annP)
-        if (tWarm < 10) koppen = 'E (Polar)'
-        else if (T > 18) {
-          if (pDry > 60) koppen = 'Af (Tropical)'
-          else koppen = 'Am/Aw (Tropical)'
-        } else if (T < 0) {
-          koppen = P > 400 ? 'Dfc/Dfd (Boreal)' : 'Bsk (Steppe)'
-        } else {
-          const pThresh = P / 25
-          if (pDry < pThresh) koppen = 'Csa/Csb (Mediterranean)'
-          else if (T < 8) koppen = 'Dfb/Dfc (Continental)'
-          else koppen = 'Cfb (Oceanic)'
+      const koppen = koppenClassify(annT, tCold, tWarm, annP, pMonthly, tMonthly)
+
+      // Monthly mini-chart values: normalize for display
+      const maxP = Math.max(1, ...pMonthly.filter(v=>v!=null))
+      const minT = Math.min(...tAnn), maxT = Math.max(...tAnn)
+      const monthly12 = months.map((m,i) => {
+        const p = pMonthly[i] ?? 0
+        const t = tMonthly[i] ?? ((minT+maxT)/2)
+        return {
+          p:  p.toFixed(0),
+          t:  t.toFixed(1),
+          pH: Math.round(p / maxP * 40),
+          tPos: Math.round((t - minT) / Math.max(1, maxT - minT) * 30) + 5,
         }
-      }
+      })
 
-      return { seasonal, annT, annP, koppen, tMonthly, pMonthly }
+      return { seasonal, annT, annP, koppen, tMonthly, pMonthly, monthly: monthly12 }
     },
 
-    // Per-year annual totals from the FULL daily series (ignores date filter)
     yearlyStats() {
       const byYear = {}
       for (const r of this.daily) {
         const yr = r.date?.slice(0,4); if (!yr) continue
-        if (!byYear[yr]) byYear[yr] = { gpp:[], reco:[], nee:[], n:0 }
+        if (!byYear[yr]) byYear[yr] = { gpp:[], reco:[], nee:[], t:[], p:[], n:0 }
         const acc = byYear[yr]
         if (r.GPP  != null) { acc.gpp.push(r.GPP);   acc.n++ }
         if (r.RECO != null)   acc.reco.push(r.RECO)
         if (r.NEE  != null)   acc.nee.push(r.NEE)
+        if (r.t    != null)   acc.t.push(r.t)
+        if (r.p    != null)   acc.p.push(r.p * 24)  // mm/h → mm/day
       }
       const toGC = arr => arr.length
         ? Math.round(arr.reduce((a,b)=>a+b,0) * 86400 * 12.01 / 1e6)
@@ -576,8 +642,13 @@ window.ResultsPanel = defineComponent({
       return Object.entries(byYear)
         .sort(([a],[b]) => a < b ? -1 : 1)
         .map(([yr, d]) => {
-          const nee = toGC(d.nee)
-          return { year: yr, gpp: toGC(d.gpp), reco: toGC(d.reco), nee, isSink: (nee ?? 0) < 0 }
+          const gpp  = toGC(d.gpp)
+          const reco = toGC(d.reco)
+          const nee  = toGC(d.nee)
+          const tMean = d.t.length ? (d.t.reduce((a,b)=>a+b,0)/d.t.length).toFixed(1) : null
+          const pTotal = d.p.length ? Math.round(d.p.reduce((a,b)=>a+b,0)) : null
+          const cue = gpp && reco ? (gpp/reco).toFixed(2) : '—'
+          return { year: yr, gpp, reco, nee, cue, tMean, pTotal, isSink: (nee ?? 0) < 0 }
         })
     },
   },
@@ -624,6 +695,68 @@ window.ResultsPanel = defineComponent({
       nextTick(() => this.buildFluxChart())
     },
 
+    toggle3D() {
+      this.show3D = !this.show3D
+      if (this.show3D) nextTick(() => this.build3D())
+    },
+
+    // ── 3D Surface (Plotly.js) ────────────────────────────────────────────
+    build3D() {
+      const el = this.$refs.surf3D
+      if (!el || typeof Plotly === 'undefined') return
+      const varName = this.var3D
+      if (!this.numericCols.includes(varName)) return
+
+      // Build DOY × Hour matrix (365 × 24), averaged over all years
+      const grid = {}  // key: `${doy}_${hour}` → values[]
+      for (const r of this.hourly) {
+        const val = r[varName]
+        if (val == null || !isFinite(val)) continue
+        // compute DOY from date
+        const dt  = new Date(r.date)
+        const doy = Math.floor((dt - new Date(dt.getFullYear(), 0, 0)) / 86400000)
+        const hr  = r.hour != null ? +r.hour : (r._dt ? parseInt(r._dt.slice(11,13)) : 12)
+        const k   = `${doy}_${hr}`
+        if (!grid[k]) grid[k] = []
+        grid[k].push(val)
+      }
+
+      const doys  = Array.from({length:365}, (_,i)=>i+1)
+      const hours = Array.from({length:24},  (_,i)=>i+1)
+      const zData = doys.map(doy =>
+        hours.map(hr => {
+          const v = grid[`${doy}_${hr}`]
+          return v && v.length ? v.reduce((a,b)=>a+b,0)/v.length : null
+        })
+      )
+
+      const colorscale = IS_FLUX(varName) ? 'Viridis' : 'YlOrRd'
+
+      Plotly.react(el, [{
+        type:       'surface',
+        x:          hours,
+        y:          doys,
+        z:          zData,
+        colorscale,
+        colorbar:   { title: varUnit(varName) || varName, tickfont: { color: '#94a3b8', size: 9 } },
+        contours: {
+          z: { show: true, usecolormap: true, highlightcolor: '#42f462', project: { z: false } }
+        },
+      }], {
+        paper_bgcolor: '#0e1520',
+        plot_bgcolor:  '#0e1520',
+        margin: { l:40, r:20, t:30, b:40 },
+        scene: {
+          xaxis: { title: 'Hour', color: '#64748b', gridcolor: '#1e2d44', zerolinecolor: '#1e2d44' },
+          yaxis: { title: 'DOY',  color: '#64748b', gridcolor: '#1e2d44', zerolinecolor: '#1e2d44' },
+          zaxis: { title: varUnit(varName) || varName, color: '#64748b', gridcolor: '#1e2d44' },
+          bgcolor: '#0e1520',
+          camera: { eye: { x: 1.6, y: -1.6, z: 0.8 } },
+        },
+        font: { color: '#94a3b8' },
+      }, { responsive: true, displaylogo: false })
+    },
+
     // ── Zoom sync ─────────────────────────────────────────────
     _syncZoom(source) {
       if (this.__syncing) return
@@ -649,7 +782,6 @@ window.ResultsPanel = defineComponent({
       this.__syncing = false
     },
 
-    // ── Phenological annotations for SWELL chart ─────────────
     _phenoAnnotations() {
       if (!this._hasAnnotation) return {}
       const MARKERS = {
@@ -667,7 +799,6 @@ window.ResultsPanel = defineComponent({
         for (const [key, cfg] of Object.entries(MARKERS)) {
           if (m[key] == null) continue
           const dateStr = doyToDate(m.year, m[key])
-          // Only annotate if the date is within filtered range
           annotations[`${key}_${m.year}`] = {
             type: 'line',
             xMin: dateStr, xMax: dateStr,
@@ -689,7 +820,6 @@ window.ResultsPanel = defineComponent({
       return annotations
     },
 
-    // ── Dataset builder ───────────────────────────────────────
     _makeDatasets(names, chartName) {
       const d    = this.filteredAgg
       const isLn = this.chartType === 'line'
@@ -698,7 +828,6 @@ window.ResultsPanel = defineComponent({
         const yId  = yAxisFor(chartName, n)
         const isRef = n.toLowerCase() === 'reference'
 
-        // 'reference' = MODIS EVI composites (every ~16 days) — render as points only
         if (isRef) {
           return {
             label:           n,
@@ -753,7 +882,6 @@ window.ResultsPanel = defineComponent({
       return { ticks:{color:'#64748b', maxTicksLimit:7, font:{size:9}}, grid:{color:'#1e2d44'} }
     },
 
-    // ── Chart builders ────────────────────────────────────────
     buildSwellChart() {
       this._swellChart?.destroy()
       const canvas = this.$refs.swellCanvas
@@ -839,10 +967,13 @@ window.ResultsPanel = defineComponent({
     rebuild() {
       this._swellChart?.destroy(); this._swellChart = null
       this._fluxChart?.destroy();  this._fluxChart  = null
-      nextTick(() => { this.buildSwellChart(); this.buildFluxChart() })
+      nextTick(() => {
+        this.buildSwellChart()
+        this.buildFluxChart()
+        if (this.show3D) this.build3D()
+      })
     },
 
-    // ── CSV ingestion ─────────────────────────────────────────
     loadCsv(csv) {
       const lines = csv.trim().split('\n')
       if (lines.length < 2) return
@@ -865,9 +996,11 @@ window.ResultsPanel = defineComponent({
           if (!isNaN(v)) {
             row[col] = (col === 'doy') ? Math.round(v) : v
           } else if (raw) {
-            row[col] = raw   // store non-numeric (e.g. phenoPhase) as string
+            row[col] = raw
           }
         })
+        // Preserve hour as numeric for 3D
+        if (hourIdx >= 0 && !isNaN(h)) row.hour = h
         return row
       }).filter(r => r.date && r.date.length === 10)
 
@@ -889,8 +1022,12 @@ window.ResultsPanel = defineComponent({
         const f = this.numericCols.find(c=>IS_FLUX(c))
         if (f) this.fluxDatasets = [f]
       }
+      // Default 3D variable
+      if (!avail.has(this.var3D)) {
+        this.var3D = this.numericCols.find(c => IS_FLUX(c)) ?? this.numericCols[0] ?? 'GPP'
+      }
       this.dateFrom=''; this.dateTo=''
-      this._csvKey++   // trigger chart rebuild even when data was already present
+      this._csvKey++
     },
   },
 })
