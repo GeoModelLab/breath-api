@@ -35,18 +35,19 @@ const PARAM_DEFS = {
     { key:'parRespiration_respirationSenescencePow',    label:'Senescence R shape',  min:1,     max:4,     step:0.1,   def:2.0,   desc:'Power shape of senescence respiration boost' },
   ],
   phenology: [
-    { key:'parDormancyInduction_limitingPhotoperiod',   label:'P limit (h)',         min:8,     max:14,    step:0.1,   def:11.0,  desc:'Photoperiod below which dormancy induction is fully limited' },
-    { key:'parDormancyInduction_notLimitingPhotoperiod',label:'P not-limit (h)',     min:10,    max:18,    step:0.1,   def:14.0,  desc:'Photoperiod above which dormancy induction is not limited' },
-    { key:'parDormancyInduction_limitingTemperature',   label:'T limit DI (°C)',     min:-5,    max:10,    step:0.5,   def:2.0,   desc:'Temperature below which dormancy induction is fully limited' },
-    { key:'parDormancyInduction_notLimitingTemperature',label:'T not-limit DI (°C)', min:5,     max:20,    step:0.5,   def:12.0,  desc:'Temperature above which dormancy induction is not limited' },
-    { key:'parDormancyInduction_photoThermalThreshold', label:'DI threshold',        min:5,     max:150,   step:1,     def:30,    desc:'Photothermal units to trigger dormancy induction' },
-    { key:'parEndodormancy_chillingThreshold',          label:'Chilling threshold',  min:10,    max:150,   step:5,     def:50,    desc:'Chilling units required to complete endodormancy' },
-    { key:'parEcodormancy_photoThermalThreshold',       label:'Ecodorm threshold',   min:5,     max:80,    step:1,     def:15,    desc:'Photothermal units to complete ecodormancy' },
-    { key:'parGrowth_thermalThreshold',                 label:'Growth threshold',    min:5,     max:100,   step:1,     def:25,    desc:'Thermal forcing units required for leaf-out' },
-    { key:'parGrowth_minimumTemperature',               label:'T min growth (°C)',   min:-5,    max:10,    step:0.5,   def:2.0,   desc:'Minimum temperature for spring forcing accumulation' },
-    { key:'parGrowth_optimumTemperature',               label:'T opt growth (°C)',   min:15,    max:30,    step:0.5,   def:22.0,  desc:'Optimum temperature for spring forcing accumulation' },
-    { key:'parGreendown_thermalThreshold',              label:'Greendown threshold', min:20,    max:200,   step:5,     def:70,    desc:'Thermal units to complete the greendown phase' },
-    { key:'parSenescence_photoThermalThreshold',        label:'Senescence threshold',min:5,     max:150,   step:1,     def:30,    desc:'Photothermal units to complete senescence' },
+    { key:'parEndodormancy_chillingThreshold',         label:'Chilling req. (CU)',   min:50,    max:150,   step:1,     def:87,    desc:'Chilling units required to complete endodormancy' },
+    { key:'parEcodormancy_photoThermalThreshold',      label:'Ecodorm threshold',    min:3,     max:25,    step:0.5,   def:12,    desc:'Photothermal units to complete ecodormancy' },
+    { key:'parGrowth_optimumTemperature',              label:'T opt growth (°C)',    min:15,    max:26,    step:0.5,   def:20,    desc:'Optimum temperature for spring forcing accumulation' },
+    { key:'parGrowth_thermalThreshold',                label:'Growth threshold',     min:20,    max:45,    step:1,     def:35,    desc:'Thermal forcing units required for leaf-out' },
+    { key:'parGreendown_thermalThreshold',             label:'Greendown threshold',  min:50,    max:130,   step:1,     def:79,    desc:'Thermal units to complete the greendown phase' },
+    { key:'parSenescence_photoThermalThreshold',       label:'Senescence threshold', min:60,    max:90,    step:1,     def:72,    desc:'Photothermal units to complete senescence' },
+    { key:'parVegetationIndex_nVIGrowth',              label:'nVI growth',           min:1,     max:4.5,   step:0.01,  def:3.02,  desc:'VI dynamics shape — spring growth phase' },
+    { key:'parVegetationIndex_nVIEndodormancy',        label:'nVI endodorm',         min:0.1,   max:0.8,   step:0.01,  def:0.52,  desc:'VI dynamics shape — endodormancy' },
+    { key:'parVegetationIndex_nVISenescence',          label:'nVI senescence',       min:0.03,  max:0.2,   step:0.005, def:0.5,   desc:'VI dynamics shape — senescence' },
+    { key:'parVegetationIndex_nVIGreendown',           label:'nVI greendown',        min:0.25,  max:1.2,   step:0.01,  def:0.13,  desc:'VI dynamics shape — greendown' },
+    { key:'parVegetationIndex_nVIEcodormancy',         label:'nVI ecodorm',          min:0.2,   max:0.8,   step:0.01,  def:0.73,  desc:'VI dynamics shape — ecodormancy' },
+    { key:'parVegetationIndex_minimumVI',              label:'VI minimum (EVI)',      min:0.05,  max:0.3,   step:0.005, def:0.15,  desc:'Minimum vegetation index (winter minimum EVI)' },
+    { key:'parVegetationIndex_maximumVI',              label:'VI maximum (EVI)',      min:0.53,  max:0.8,   step:0.005, def:0.66,  desc:'Maximum vegetation index (peak summer EVI)' },
   ],
 }
 
@@ -73,7 +74,7 @@ window.ParameterPanel = defineComponent({
           <input type="range" :min="p.min" :max="p.max" :step="p.step"
                  v-model.number="values[p.key]" />
           <span class="p2-bound">{{ p.max }}</span>
-          <input class="p2-num" type="number"
+          <input class="p2-num p2-num-nospinner" type="number"
                  :min="p.min" :max="p.max" :step="p.step"
                  v-model.number="values[p.key]" />
         </div>

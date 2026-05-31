@@ -84,7 +84,7 @@ function dailyAgg(rows, cols) {
 }
 
 const SWELL_GROUPS = [
-  { label:'Phenology',  match: n => /^swell$|reference|vegetationcover|phenoscale|phenologyscale|phenoreco|lai/i.test(n) },
+  { label:'Phenology',  match: n => /^swell$|^reference$|^vegetationcover$/i.test(n) },
   { label:'Scalers ×',  match: n => /tscale|parscale|waterstress|vpdscale/i.test(n) },
   { label:'Weather ↗',  match: n => IS_WEATHER(n) },
 ]
@@ -221,13 +221,12 @@ window.ResultsPanel = defineComponent({
               <span class="cs-p">{{ climateStats.annP }} mm</span>
             </div>
           </div>
-          <!-- Monthly climate mini-chart -->
+          <!-- Monthly T curve -->
           <div class="cs-monthly">
-            <div class="cs-monthly-title">Monthly T (°C) &amp; P (mm)</div>
+            <div class="cs-monthly-title">Monthly T (°C) · P (mm)</div>
             <div class="cs-monthly-bars">
               <div v-for="(m, i) in climateStats.monthly" :key="i" class="cs-month-col">
-                <div class="cs-p-bar" :style="'height:'+m.pH+'px;background:#38bdf8'" :title="MONTH_NAMES[i]+' P: '+m.p+' mm'"></div>
-                <div class="cs-t-dot" :style="'bottom:'+m.tPos+'px'" :title="MONTH_NAMES[i]+' T: '+m.t+'°C'"></div>
+                <div class="cs-t-dot" :style="'bottom:'+m.tPos+'px'" :title="MONTH_NAMES[i]+': '+m.t+'°C  '+m.p+' mm'"></div>
                 <div class="cs-month-lbl">{{ MONTH_NAMES[i][0] }}</div>
               </div>
             </div>
@@ -443,7 +442,8 @@ window.ResultsPanel = defineComponent({
       _fluxChart:    null,
       _hasZoom:      typeof Chart !== 'undefined' && !!Chart.registry?.plugins?.get('zoom'),
       _hasAnnotation:typeof Chart !== 'undefined' && !!Chart.registry?.plugins?.get('annotation'),
-      _rebuilding:   false,
+      _rebuilding:      false,
+      _settingFromLoad: false,
       showYearTable:  false,
       showPhenoTable: false,
       show3D:         false,
@@ -569,19 +569,32 @@ window.ResultsPanel = defineComponent({
     climateStats() {
       if (!this.daily.length) return null
 
-      // Group by calendar month for temperature, and by year-month for precipitation.
-      // Precipitation: accumulate daily totals per year-month, then average across years.
+      // Temperature: from daily aggregated rows (mean of hourly values)
+      // Precipitation: sum hourly p values per day (gives mm/day regardless of input units),
+      //   then accumulate per year-month and average across years → avg mm/month
       const monthlyT  = {}   // '01'…'12' → [daily mean °C]
-      const ymPrecip  = {}   // 'YYYY-MM'  → total mm for that month
+      const dayPrecip = {}   // 'YYYY-MM-DD' → mm that day (sum of hourly p)
+      for (const r of this.hourly) {
+        if (!r.date) continue
+        const mm = r.date.slice(5,7)
+        if (r.t != null && isFinite(r.t)) {
+          // only once per day for temperature (use daily rows below instead)
+        }
+        if (r.p != null && isFinite(r.p))
+          dayPrecip[r.date] = (dayPrecip[r.date] ?? 0) + r.p
+      }
       for (const r of this.daily) {
         const mm = r.date?.slice(5,7); if (!mm) continue
-        const ym = r.date?.slice(0,7)
         if (r.t != null && isFinite(r.t)) {
           if (!monthlyT[mm]) monthlyT[mm] = []
           monthlyT[mm].push(r.t)
         }
-        if (r.p != null && isFinite(r.p))
-          ymPrecip[ym] = (ymPrecip[ym] ?? 0) + r.p * 24  // mm/h → mm/day, accumulate
+      }
+      // Accumulate daily mm to year-month totals, then average across years
+      const ymPrecip = {}
+      for (const [date, mm_day] of Object.entries(dayPrecip)) {
+        const ym = date.slice(0,7)
+        ymPrecip[ym] = (ymPrecip[ym] ?? 0) + mm_day
       }
 
       const months = Array.from({length:12}, (_,i) => String(i+1).padStart(2,'0'))
@@ -663,10 +676,10 @@ window.ResultsPanel = defineComponent({
   },
 
   watch: {
-    aggMode()  { nextTick(() => this.rebuild()) },
-    chartType(){ nextTick(() => this.rebuild()) },
-    dateFrom() { nextTick(() => this.rebuild()) },
-    dateTo()   { nextTick(() => this.rebuild()) },
+    aggMode()  { if (!this._settingFromLoad) nextTick(() => this.rebuild()) },
+    chartType(){ if (!this._settingFromLoad) nextTick(() => this.rebuild()) },
+    dateFrom() { if (!this._settingFromLoad) nextTick(() => this.rebuild()) },
+    dateTo()   { if (!this._settingFromLoad) nextTick(() => this.rebuild()) },
   },
 
   beforeUnmount() {
@@ -872,15 +885,17 @@ window.ResultsPanel = defineComponent({
       return {
         zoom: {
           zoom: {
-            wheel:   { enabled: true, modifierKey: 'ctrl' },
-            pinch:   { enabled: true },
-            mode:    'x',
+            wheel: { enabled: true, modifierKey: 'ctrl' },
+            pinch: { enabled: true },
+            drag:  { enabled: true, backgroundColor: 'rgba(59,130,246,0.15)', borderColor: '#3b82f6', borderWidth: 1 },
+            mode:  'x',
             onZoom:         ({ chart }) => this._syncZoom(chart),
             onZoomComplete: ({ chart }) => this._syncZoom(chart),
           },
           pan: {
             enabled: true,
             mode:    'x',
+            modifierKey: 'shift',
             onPan:         ({ chart }) => this._syncZoom(chart),
             onPanComplete: ({ chart }) => this._syncZoom(chart),
           },
@@ -904,9 +919,10 @@ window.ResultsPanel = defineComponent({
         type: this.chartType,
         data: { labels, datasets: this._makeDatasets(this.swellDatasets, 'swell') },
         options: {
-          responsive: true, maintainAspectRatio: false, animation: {duration:150},
+          responsive: true, maintainAspectRatio: false, animation: {duration:0},
           interaction: { mode:'index', intersect:false },
           plugins: {
+            decimation: { enabled: this.aggMode==='hourly', algorithm:'lttb', samples:1200, threshold:1200 },
             legend: { display: false },
             tooltip: {
               backgroundColor:'#182030', titleColor:'#7080a0', bodyColor:'#c8d8e8',
@@ -948,9 +964,10 @@ window.ResultsPanel = defineComponent({
         type: this.chartType,
         data: { labels, datasets: this._makeDatasets(this.fluxDatasets, 'flux') },
         options: {
-          responsive: true, maintainAspectRatio: false, animation: {duration:150},
+          responsive: true, maintainAspectRatio: false, animation: {duration:0},
           interaction: { mode:'index', intersect:false },
           plugins: {
+            decimation: { enabled: this.aggMode==='hourly', algorithm:'lttb', samples:1200, threshold:1200 },
             legend: { display: false },
             tooltip: {
               backgroundColor:'#182030', titleColor:'#7080a0', bodyColor:'#c8d8e8',
@@ -1039,12 +1056,21 @@ window.ResultsPanel = defineComponent({
       if (!avail.has(this.var3D)) {
         this.var3D = this.numericCols.find(c => IS_FLUX(c)) ?? this.numericCols[0] ?? 'GPP'
       }
-      this.show3D  = false
-      this.aggMode = 'daily'
+      // Suppress watcher cascade while resetting state
+      this._settingFromLoad = true
+      this.show3D   = false
+      this.aggMode  = 'daily'
       this.dateFrom = ''
       this.dateTo   = ''
-      // Two ticks: first lets Vue update the DOM with new data, second builds charts
-      nextTick(() => nextTick(() => this.rebuild()))
+      this._settingFromLoad = false
+      this._rebuilding = false
+      // Destroy old charts immediately, build fresh after DOM update
+      this._swellChart?.destroy(); this._swellChart = null
+      this._fluxChart?.destroy();  this._fluxChart  = null
+      nextTick(() => {
+        this.buildSwellChart()
+        this.buildFluxChart()
+      })
     },
   },
 })

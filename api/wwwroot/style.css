@@ -833,3 +833,8 @@ h2 {
 
 /* Grid variable selector */
 .grid-var-sel { background: #0e1520; color: #94a3b8; border: 1px solid #243050; border-radius: 4px; padding: 2px 4px; font-size: 11px; }
+
+/* Remove number input spinners */
+.p2-num-nospinner::-webkit-inner-spin-button,
+.p2-num-nospinner::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.p2-num-nospinner { -moz-appearance: textfield; }
