@@ -337,8 +337,8 @@ window.ResultsPanel = defineComponent({
 
           <div class="charts-area">
 
-            <!-- 3D surface panel -->
-            <div v-if="show3D" class="chart-card chart-card-tall" style="margin-bottom:8px">
+            <!-- 3D surface panel: takes full chart area when active -->
+            <div v-if="show3D" class="chart-card" style="height:600px;margin-bottom:8px;display:flex;flex-direction:column">
               <div class="chart-hd">
                 <span class="chart-title-tag" style="background:#6366f1">3D</span>
                 <span class="chart-subtitle-tag">Seasonal × Diurnal cycle (DOY × Hour)</span>
@@ -346,11 +346,11 @@ window.ResultsPanel = defineComponent({
                   <option v-for="v in numeric3DVars" :key="v" :value="v">{{ v }}</option>
                 </select>
               </div>
-              <div class="chart-body" ref="surf3D" style="min-height:320px"></div>
+              <div ref="surf3D" style="flex:1;min-height:0"></div>
             </div>
 
-            <!-- SWELL chart -->
-            <div class="chart-card chart-card-tall">
+            <!-- SWELL chart: hidden when 3D active -->
+            <div v-show="!show3D" class="chart-card chart-card-tall">
               <div class="chart-hd">
                 <span class="chart-title-tag swell-tag">SWELL</span>
                 <span class="chart-subtitle-tag">left: 0–1 scale &nbsp;|&nbsp; right: weather units</span>
@@ -369,8 +369,8 @@ window.ResultsPanel = defineComponent({
               </div>
             </div>
 
-            <!-- FLUXES chart -->
-            <div class="chart-card chart-card-tall" style="margin-top:8px">
+            <!-- FLUXES chart: hidden when 3D active -->
+            <div v-show="!show3D" class="chart-card chart-card-tall" style="margin-top:8px">
               <div class="chart-hd">
                 <span class="chart-title-tag flux-tag">FLUXES</span>
                 <span class="chart-subtitle-tag">µmol m⁻² s⁻¹</span>
@@ -443,7 +443,7 @@ window.ResultsPanel = defineComponent({
       _fluxChart:    null,
       _hasZoom:      typeof Chart !== 'undefined' && !!Chart.registry?.plugins?.get('zoom'),
       _hasAnnotation:typeof Chart !== 'undefined' && !!Chart.registry?.plugins?.get('annotation'),
-      _csvKey:       0,
+      _rebuilding:   false,
       showYearTable:  false,
       showPhenoTable: false,
       show3D:         false,
@@ -461,7 +461,6 @@ window.ResultsPanel = defineComponent({
         let d = this.hourly
         if (this.dateFrom) d = d.filter(r => r.date >= this.dateFrom)
         if (this.dateTo)   d = d.filter(r => r.date <= this.dateTo)
-        if (d.length > 90 * 24) d = d.slice(-90 * 24)
         return d
       }
       return this.daily
@@ -555,7 +554,7 @@ window.ResultsPanel = defineComponent({
         const changed = cur !== prev
         if (m.sgs == null && /growth/i.test(cur) && changed)        m.sgs = doy
         if (m.mat == null && /green/i.test(cur) && changed && m.sgs != null) m.mat = doy
-        if (m.sen == null && /senesci/i.test(cur) && changed)        m.sen = doy
+        if (m.sen == null && /senesc/i.test(cur) && changed)          m.sen = doy
         if (m.egs == null && /dorm|induct/i.test(cur) && changed && m.mat != null) m.egs = doy
         prevPhase[yr] = cur
       }
@@ -570,29 +569,39 @@ window.ResultsPanel = defineComponent({
     climateStats() {
       if (!this.daily.length) return null
 
-      const monthly = {}
+      // Group by calendar month for temperature, and by year-month for precipitation.
+      // Precipitation: accumulate daily totals per year-month, then average across years.
+      const monthlyT  = {}   // '01'…'12' → [daily mean °C]
+      const ymPrecip  = {}   // 'YYYY-MM'  → total mm for that month
       for (const r of this.daily) {
-        const m = r.date?.slice(5,7); if (!m) continue
-        if (!monthly[m]) monthly[m] = { t:[], p:[] }
-        // p is mm/h → convert to mm/day (*24)
-        if (r.t != null) monthly[m].t.push(r.t)
-        if (r.p != null) monthly[m].p.push(r.p * 24)
+        const mm = r.date?.slice(5,7); if (!mm) continue
+        const ym = r.date?.slice(0,7)
+        if (r.t != null && isFinite(r.t)) {
+          if (!monthlyT[mm]) monthlyT[mm] = []
+          monthlyT[mm].push(r.t)
+        }
+        if (r.p != null && isFinite(r.p))
+          ymPrecip[ym] = (ymPrecip[ym] ?? 0) + r.p * 24  // mm/h → mm/day, accumulate
       }
 
       const months = Array.from({length:12}, (_,i) => String(i+1).padStart(2,'0'))
-      const tMonthly = months.map(m => monthly[m]?.t?.length
-        ? monthly[m].t.reduce((a,b)=>a+b,0)/monthly[m].t.length : null)
-      const pMonthly = months.map(m => monthly[m]?.p?.length
-        ? monthly[m].p.reduce((a,b)=>a+b,0) / (monthly[m].p.length / 30)  // mm/month
-        : null)
+      const tMonthly = months.map(mm =>
+        monthlyT[mm]?.length ? monthlyT[mm].reduce((a,b)=>a+b,0)/monthlyT[mm].length : null)
+
+      // Average monthly precip: mean of per-year monthly totals
+      const pMonthly = months.map(mm => {
+        const vals = Object.entries(ymPrecip)
+          .filter(([ym]) => ym.slice(5,7) === mm)
+          .map(([,v]) => v)
+        return vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null
+      })
 
       // Seasonal (DJF, MAM, JJA, SON)
       const seas = { DJF:[11,0,1], MAM:[2,3,4], JJA:[5,6,7], SON:[8,9,10] }
       const seasonal = {}
       for (const [s, idxs] of Object.entries(seas)) {
-        const tVals = idxs.flatMap(i => monthly[months[i]]?.t ?? [])
-        const pVals = idxs.flatMap(i => monthly[months[i]]?.p ?? [])
-        const pMm = pVals.length ? (pVals.reduce((a,b)=>a+b,0) / (pVals.length / 30) * 3) : 0
+        const tVals = idxs.map(i => tMonthly[i]).filter(v => v != null)
+        const pMm   = idxs.reduce((sum,i) => sum + (pMonthly[i] ?? 0), 0)
         seasonal[s] = {
           t: tVals.length ? (tVals.reduce((a,b)=>a+b,0)/tVals.length).toFixed(1) : '—',
           p: pMm.toFixed(0)
@@ -658,7 +667,6 @@ window.ResultsPanel = defineComponent({
     chartType(){ nextTick(() => this.rebuild()) },
     dateFrom() { nextTick(() => this.rebuild()) },
     dateTo()   { nextTick(() => this.rebuild()) },
-    _csvKey()  { this.aggMode='daily'; this.dateFrom=''; this.dateTo=''; nextTick(()=>this.rebuild()) },
   },
 
   beforeUnmount() {
@@ -867,11 +875,13 @@ window.ResultsPanel = defineComponent({
             wheel:   { enabled: true, modifierKey: 'ctrl' },
             pinch:   { enabled: true },
             mode:    'x',
+            onZoom:         ({ chart }) => this._syncZoom(chart),
             onZoomComplete: ({ chart }) => this._syncZoom(chart),
           },
           pan: {
             enabled: true,
             mode:    'x',
+            onPan:         ({ chart }) => this._syncZoom(chart),
             onPanComplete: ({ chart }) => this._syncZoom(chart),
           },
         },
@@ -965,12 +975,15 @@ window.ResultsPanel = defineComponent({
     },
 
     rebuild() {
+      if (this._rebuilding) return
+      this._rebuilding = true
       this._swellChart?.destroy(); this._swellChart = null
       this._fluxChart?.destroy();  this._fluxChart  = null
       nextTick(() => {
         this.buildSwellChart()
         this.buildFluxChart()
         if (this.show3D) this.build3D()
+        this._rebuilding = false
       })
     },
 
@@ -1026,8 +1039,12 @@ window.ResultsPanel = defineComponent({
       if (!avail.has(this.var3D)) {
         this.var3D = this.numericCols.find(c => IS_FLUX(c)) ?? this.numericCols[0] ?? 'GPP'
       }
-      this.dateFrom=''; this.dateTo=''
-      this._csvKey++
+      this.show3D  = false
+      this.aggMode = 'daily'
+      this.dateFrom = ''
+      this.dateTo   = ''
+      // Two ticks: first lets Vue update the DOM with new data, second builds charts
+      nextTick(() => nextTick(() => this.rebuild()))
     },
   },
 })
