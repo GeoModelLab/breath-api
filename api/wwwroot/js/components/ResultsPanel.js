@@ -981,6 +981,7 @@ window.ResultsPanel = defineComponent({
         }
       }
       this.__syncing = false
+      nextTick(() => this._updateAnnotationsForZoom(source))
     },
 
     resetAllZoom() {
@@ -988,6 +989,37 @@ window.ResultsPanel = defineComponent({
       this._swellChart?.resetZoom?.()
       this._fluxChart?.resetZoom?.()
       this.__syncing = false
+      nextTick(() => this._updateAnnotationsForZoom(null))
+    },
+
+    _updateAnnotationsForZoom(source) {
+      if (!this._hasAnnotation) return
+      const allAnnotations = this._phenoAnnotations()
+      // Determine visible date range from the source chart (or any chart if null)
+      const refChart = source ?? this._swellChart ?? this._fluxChart
+      const scale  = refChart?.scales?.x
+      const labels = refChart?.data?.labels
+      let minDate = null, maxDate = null
+      if (scale && labels?.length) {
+        const minIdx = Math.max(0, Math.round(scale.min ?? 0))
+        const maxIdx = Math.min(labels.length - 1, Math.round(scale.max ?? labels.length - 1))
+        const minLabel = labels[minIdx]
+        const maxLabel = labels[maxIdx]
+        minDate = (typeof minLabel === 'string' ? minLabel : '').slice(0, 10) || null
+        maxDate = (typeof maxLabel === 'string' ? maxLabel : '').slice(0, 10) || null
+      }
+      const visible = {}
+      for (const [key, ann] of Object.entries(allAnnotations)) {
+        const annDate = ((ann.xMin ?? ann.xValue) ?? '').slice(0, 10)
+        if (!minDate || !maxDate || (annDate >= minDate && annDate <= maxDate)) {
+          visible[key] = ann
+        }
+      }
+      for (const c of [this._swellChart, this._fluxChart]) {
+        if (!c?.options?.plugins?.annotation) continue
+        c.options.plugins.annotation.annotations = visible
+        c.update('none')
+      }
     },
 
     _phenoAnnotations() {
