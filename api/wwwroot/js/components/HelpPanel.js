@@ -231,7 +231,7 @@ df  = pd.read_csv(io.StringIO(csv), parse_dates=["date"])</pre>
 
             <div class="help-tip" style="margin-top:8px">
               📓 Full examples (single pixel, grid, parameter overrides):<br>
-              <a href="https://nbviewer.org/urls/raw.githubusercontent.com/GeoModelLab/breath-api/main/examples/breath_api_demo.ipynb" target="_blank" style="color:#3b82f6">Python notebook (nbviewer) ↗</a>
+              <a href="https://github.com/GeoModelLab/breath-api/blob/main/examples/breath_api_demo.ipynb" target="_blank" style="color:#3b82f6">Python notebook (GitHub) ↗</a>
               &nbsp;·&nbsp;
               <a href="/docs/breath_api_demo.html" target="_blank" style="color:#3b82f6">R vignette (HTML) ↗</a>
             </div>

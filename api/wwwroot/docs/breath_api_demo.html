@@ -265,6 +265,7 @@ tbody tr:hover { background: #f8f9fa; }
     <li><a href="#phenology">7 · Phenological dates</a></li>
     <li><a href="#grid">8 · Multi-pixel grid run</a></li>
     <li><a href="#overrides">9 · Parameter overrides</a></li>
+    <li><a href="#custom-weather">10 · Custom weather data</a></li>
     <li><a href="#session">Session info</a></li>
   </ul>
 </nav>
@@ -663,6 +664,112 @@ nee_px <span class="op">&lt;-</span> df_grid <span class="op">|&gt;</span>
   <span class="fn">req_perform</span>()
 
 <span class="fn">wait_for_completion</span>(BASE_URL)</code></pre>
+    </div>
+  </section>
+
+  <hr>
+
+  <!-- ── Custom weather ── -->
+  <section>
+    <h2 id="custom-weather">10 · Custom weather data</h2>
+
+    <p>By default BREATH downloads meteorological inputs automatically from NASA POWER.
+    If you have your own station data, reanalysis output, or ERA5 downloads you can
+    upload a daily weather CSV and the next simulation for that pixel will use it
+    instead — skipping the remote download entirely.</p>
+
+    <h3>10.1 · Required CSV format</h3>
+    <p>The file must be comma-separated with the following columns (dot as decimal separator):</p>
+    <table>
+      <thead><tr><th>Column</th><th>Unit</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>Date</code></td><td>yyyy-MM-dd</td><td>One row per day</td></tr>
+        <tr><td><code>PAR</code></td><td>MJ m⁻² d⁻¹</td><td>Photosynthetically active radiation</td></tr>
+        <tr><td><code>airTemperatureMaximum</code></td><td>°C</td><td>Daily maximum</td></tr>
+        <tr><td><code>airTemperatureMinimum</code></td><td>°C</td><td>Daily minimum</td></tr>
+        <tr><td><code>solarRadiation</code></td><td>MJ m⁻² d⁻¹</td><td>Global shortwave</td></tr>
+        <tr><td><code>dewPointTemperature</code></td><td>°C</td><td>Used to compute VPD</td></tr>
+        <tr><td><code>precipitation</code></td><td>mm d⁻¹</td><td>Total daily rainfall</td></tr>
+        <tr><td><code>latitude</code></td><td>°</td><td>Pixel latitude (constant per file)</td></tr>
+      </tbody>
+    </table>
+
+    <p>Retrieve a minimal template with:</p>
+    <div class="code-block-wrap">
+      <pre><code><span class="cm"># Fetch template</span>
+template &lt;- request(<span class="fu">paste0</span>(BASE_URL, <span class="st">"/api/weather/template"</span>)) |&gt;
+  <span class="fu">req_perform</span>() |&gt;
+  <span class="fu">resp_body_string</span>()
+<span class="fu">cat</span>(template)</code></pre>
+    </div>
+
+    <h3>10.2 · Upload</h3>
+    <div class="code-block-wrap">
+      <pre><code>pixel_custom &lt;- <span class="st">"44.6813_11.0217"</span>
+
+<span class="cm"># Build a synthetic daily data frame (replace with real observations)</span>
+weather_df &lt;- tibble::tibble(
+  Date                    = <span class="fu">seq</span>(<span class="fu">as.Date</span>(<span class="st">"2022-01-01"</span>), <span class="fu">as.Date</span>(<span class="st">"2024-12-31"</span>), by = <span class="st">"day"</span>),
+  PAR                     = <span class="fl">5.0</span>,
+  airTemperatureMaximum   = <span class="fl">12.0</span>,
+  airTemperatureMinimum   =  <span class="fl">2.0</span>,
+  solarRadiation          = <span class="fl">10.0</span>,
+  dewPointTemperature     = <span class="fl">-1.0</span>,
+  precipitation           =  <span class="fl">1.5</span>,
+  latitude                = <span class="fl">44.6813</span>
+)
+
+weather_csv &lt;- readr::<span class="fu">format_csv</span>(weather_df)
+
+<span class="cm"># Upload — stored server-side as {pixel}_weather.csv</span>
+resp_upload &lt;- request(<span class="fu">paste0</span>(BASE_URL, <span class="st">"/api/weather/upload"</span>)) |&gt;
+  <span class="fu">req_url_query</span>(pixel = pixel_custom) |&gt;
+  <span class="fu">req_method</span>(<span class="st">"POST"</span>) |&gt;
+  <span class="fu">req_headers</span>(<span class="st">"Content-Type"</span> = <span class="st">"text/csv"</span>) |&gt;
+  <span class="fu">req_body_raw</span>(weather_csv, type = <span class="st">"text/csv"</span>) |&gt;
+  <span class="fu">req_perform</span>()
+
+resp_upload |&gt; <span class="fu">resp_body_json</span>()</code></pre>
+    </div>
+
+    <h3>10.3 · Run with custom weather</h3>
+    <p>After uploading, run the simulation as usual. BREATH detects the cached file and skips the NASA POWER call automatically.</p>
+    <div class="code-block-wrap">
+      <pre><code>custom_payload &lt;- list(
+  settings = list(
+    pixelsRun           = list(pixel_custom),
+    startYear           = <span class="fl">2022L</span>,
+    endYear             = <span class="fl">2024L</span>,
+    inputWeather        = <span class="st">"daily"</span>,
+    modelVariant        = <span class="st">"Pheno"</span>,
+    calibration         = <span class="cn">FALSE</span>,
+    parametersDataFile  = <span class="st">"photothermalRequirements.csv"</span>,
+    simplexes           = <span class="fl">3L</span>,
+    iterations          = <span class="fl">200L</span>,
+    calibrationVariable = <span class="st">"Phenology"</span>
+  )
+)
+
+request(<span class="fu">paste0</span>(BASE_URL, <span class="st">"/api/breath/run"</span>)) |&gt;
+  <span class="fu">req_method</span>(<span class="st">"POST"</span>) |&gt;
+  <span class="fu">req_body_json</span>(custom_payload) |&gt;
+  <span class="fu">req_perform</span>()
+
+<span class="fu">wait_for_completion</span>(BASE_URL)</code></pre>
+    </div>
+
+    <h3>10.4 · List and delete cached weather files</h3>
+    <div class="code-block-wrap">
+      <pre><code><span class="cm"># List all pixels with a cached weather file</span>
+request(<span class="fu">paste0</span>(BASE_URL, <span class="st">"/api/weather/list"</span>)) |&gt;
+  <span class="fu">req_perform</span>() |&gt;
+  <span class="fu">resp_body_json</span>()
+
+<span class="cm"># Delete to revert to NASA POWER on next run</span>
+request(<span class="fu">paste0</span>(BASE_URL, <span class="st">"/api/weather/"</span>, pixel_custom)) |&gt;
+  <span class="fu">req_method</span>(<span class="st">"DELETE"</span>) |&gt;
+  <span class="fu">req_perform</span>() |&gt;
+  <span class="fu">resp_body_json</span>()</code></pre>
     </div>
   </section>
 
