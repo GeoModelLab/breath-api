@@ -1000,9 +1000,14 @@ window.ResultsPanel = defineComponent({
       for (const c of [this._swellChart, this._fluxChart]) {
         if (!c?.options?.plugins?.annotation) continue
         const scale  = c.scales?.x
-        const labels = c.data?.labels
+        const labels = c.data?.labels ?? []
+        // In hourly mode labels are full ISO datetimes; map date-only annotation keys to nearest label
+        const labelForDate = (dateStr) => {
+          const match = labels.find(l => (typeof l === 'string' ? l : '').slice(0, 10) === dateStr)
+          return match ?? dateStr
+        }
         let minDate = null, maxDate = null
-        if (scale && labels?.length) {
+        if (scale && labels.length) {
           const minIdx = Math.max(0, Math.floor(scale.min ?? 0))
           const maxIdx = Math.min(labels.length - 1, Math.ceil(scale.max ?? labels.length - 1))
           minDate = (labels[minIdx] ?? '').slice(0, 10) || null
@@ -1012,7 +1017,12 @@ window.ResultsPanel = defineComponent({
         for (const [key, ann] of Object.entries(allAnnotations)) {
           const annDate = ((ann.xMin ?? ann.xValue) ?? '').slice(0, 10)
           if (!minDate || !maxDate || (annDate >= minDate && annDate <= maxDate)) {
-            visible[key] = ann
+            // Clone and remap xMin/xMax/xValue to actual chart labels (needed for hourly category axis)
+            const mapped = { ...ann }
+            if (ann.xMin != null) mapped.xMin = labelForDate(ann.xMin.slice(0, 10))
+            if (ann.xMax != null) mapped.xMax = labelForDate(ann.xMax.slice(0, 10))
+            if (ann.xValue != null) mapped.xValue = labelForDate(ann.xValue.slice(0, 10))
+            visible[key] = mapped
           }
         }
         c.options.plugins.annotation.annotations = visible
@@ -1335,6 +1345,7 @@ window.ResultsPanel = defineComponent({
         this.buildFluxChart()
         if (this.show3D) this.build3D()
         this._rebuilding = false
+        nextTick(() => this._updateAnnotationsForZoom())
       })
     },
 
@@ -1406,6 +1417,7 @@ window.ResultsPanel = defineComponent({
       nextTick(() => {
         this.buildSwellChart()
         this.buildFluxChart()
+        nextTick(() => this._updateAnnotationsForZoom())
       })
     },
   },
