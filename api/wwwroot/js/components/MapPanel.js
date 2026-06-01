@@ -457,8 +457,12 @@ window.MapPanel = defineComponent({
       })
       const maxAbs = Math.max(1, ...values.map(v => Math.abs(v)))
 
-      // Pixel step is 0.1° by default; try to infer from data
-      const step = 0.1
+      // Infer pixel step from actual lat/lon spacing in stats
+      const lats = [...new Set(stats.map(s => s.lat))].sort((a,b) => a-b)
+      const lons = [...new Set(stats.map(s => s.lon))].sort((a,b) => a-b)
+      const stepLat = lats.length > 1 ? lats[1] - lats[0] : 0.1
+      const stepLon = lons.length > 1 ? lons[1] - lons[0] : 0.1
+      const step = Math.max(stepLat, stepLon) || 0.1
 
       for (let i = 0; i < stats.length; i++) {
         const s   = stats[i]

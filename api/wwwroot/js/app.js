@@ -183,6 +183,9 @@ createApp({
       const entry = this.$refs.mapPanel?.pointHistory?.find(h => h.lat === lat && h.lon === lon)
       const csv = entry?.csv ?? this.lastCsvText
       if (!csv) return
+      // Update active point so the next Run targets this location
+      this.point = { lat, lon }
+      this.selectedPixels = []
       this.$refs.results?.loadCsv(csv)
       this.$refs.results.locationName = this.$refs.mapPanel?.locationName || entry?.label || ''
       this.appState = 'completed'
