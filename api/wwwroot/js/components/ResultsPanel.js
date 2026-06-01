@@ -975,6 +975,7 @@ window.ResultsPanel = defineComponent({
       for (const c of [this._swellChart, this._fluxChart]) {
         if (!c || c === source) continue
         if (typeof c.zoomScale === 'function') {
+          // zoomScale internally calls chart.update() — do not call update again
           c.zoomScale('x', { min, max }, 'none')
         } else {
           c.options.scales.x.min = min
@@ -983,7 +984,6 @@ window.ResultsPanel = defineComponent({
         }
       }
       this.__syncing = false
-      // Double nextTick: first tick lets Vue flush, second lets Chart.js finish updating scales
       nextTick(() => nextTick(() => this._updateAnnotationsForZoom()))
     },
 
@@ -1031,7 +1031,7 @@ window.ResultsPanel = defineComponent({
           }
         }
         c.options.plugins.annotation.annotations = visible
-        c.draw()   // repaint only — update() would reset the zoom scale state
+        c.update('none')
       }
     },
 
