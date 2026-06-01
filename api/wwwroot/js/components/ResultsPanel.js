@@ -55,7 +55,7 @@ const VAR_UNITS = {
   nee:'µmol m⁻² s⁻¹',
   swell:'EVI', reference:'EVI', vegetationcover:'-',
   t:'°C', soilt:'°C', tleafover:'°C', tleafunder:'°C',
-  sw:'W m⁻²', p:'mm h⁻¹', rh:'%', vpd:'kPa', et0:'mm h⁻¹',
+  sw:'W m⁻²', p:'mm d⁻¹', rh:'%', vpd:'kPa', et0:'mm d⁻¹',
   tscale:'0–1', tscaleover:'0–1', tscaleunder:'0–1', tscalereco:'0–1',
   parscale:'0–1', parscaleover:'0–1', parscaleunder:'0–1',
   waterstress:'0–1', vpdscale:'0–1',
@@ -75,6 +75,8 @@ function yAxisFor(chart, name) {
 
 // parscale is 0 at night by definition; average only daytime (non-zero) values for daily display
 const DAYTIME_ONLY = /parscale/i
+// et0 and p are rates (mm h⁻¹) — show daily totals, not hourly averages
+const DAILY_SUM    = /^(et0|p)$/i
 
 function dailyAgg(rows, cols) {
   const d = {}
@@ -88,7 +90,7 @@ function dailyAgg(rows, cols) {
     })
   }
   return Object.entries(d).sort(([a],[b])=>a<b?-1:1)
-    .map(([date,v]) => { const row={date}; cols.forEach(c=>{ row[c]=mean(v[c]) }); return row })
+    .map(([date,v]) => { const row={date}; cols.forEach(c=>{ row[c]= DAILY_SUM.test(c) ? v[c].reduce((a,b)=>a+b,0) : mean(v[c]) }); return row })
 }
 
 const VAR_TAB_GROUPS = [
@@ -298,7 +300,7 @@ window.ResultsPanel = defineComponent({
         <!-- ── Phenological metrics ── -->
         <div v-if="phenoMetrics.length" class="pheno-table-wrap">
           <div class="table-toggle" @click="showPhenoTable=!showPhenoTable">
-            <span>Phenological dates (DOY)</span>
+            <span>Phenological dates</span>
             <span class="toggle-arrow">{{ showPhenoTable ? '▲' : '▼' }}</span>
           </div>
           <table v-if="showPhenoTable" class="year-table">
@@ -790,8 +792,8 @@ window.ResultsPanel = defineComponent({
     },
     doyToLabel(year, doy) {
       if (doy == null) return '—'
-      const d = new Date(parseInt(year), 0, doy)
-      return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+      const d = new Date(Date.UTC(parseInt(year), 0, doy))
+      return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })
     },
     clearBrush() { this.dateFrom=''; this.dateTo='' },
     varColor, IS_WEATHER, IS_FLUX,
@@ -929,7 +931,7 @@ window.ResultsPanel = defineComponent({
           const vals = swellByDoy[d]
           if (!vals?.length) return null
           const avg = vals.reduce((a,b)=>a+b,0)/vals.length
-          return zMin + avg * (zMax - zMin)
+          return zMin + avg * (zMax - zMin) * 2
         })
         traces.push({
           type: 'scatter3d',
@@ -1308,8 +1310,8 @@ window.ResultsPanel = defineComponent({
       const AXES = [
         { key: 'tscale',      label: 'T scale',   color: '#fbbf24', invert: false },
         { key: 'parscale',    label: 'PAR scale', color: '#fef08a', invert: false },
-        { key: 'vpdscale',    label: 'VPD scale', color: '#c084fc', invert: false },
-        { key: 'waterstress', label: 'Water',     color: '#818cf8', invert: true  },
+        { key: 'vpdscale',    label: 'VPD scale', color: '#c084fc', invert: true  },
+        { key: 'waterstress', label: 'Water avail.', color: '#818cf8', invert: false },
       ]
       const colMap = {}
       for (const ax of AXES) {

@@ -47,7 +47,7 @@ createApp({
             ← New location
           </button>
 
-          <a class="nav-link" href="/swagger" target="_blank">API ↗</a>
+          <a class="nav-link" href="/docs/breath_api_demo.html" target="_blank">API ↗</a>
           <button class="help-btn" @click="helpOpen=!helpOpen; localStorage.setItem('breath_help_seen','1')" title="Help &amp; Tutorial">?</button>
         </div>
       </header>
