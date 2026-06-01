@@ -981,6 +981,8 @@ window.ResultsPanel = defineComponent({
         }
       }
       this.__syncing = false
+      // Double nextTick: first tick lets Vue flush, second lets Chart.js finish updating scales
+      nextTick(() => nextTick(() => this._updateAnnotationsForZoom()))
     },
 
     resetAllZoom() {
@@ -988,6 +990,34 @@ window.ResultsPanel = defineComponent({
       this._swellChart?.resetZoom?.()
       this._fluxChart?.resetZoom?.()
       this.__syncing = false
+      nextTick(() => nextTick(() => this._updateAnnotationsForZoom()))
+    },
+
+    _updateAnnotationsForZoom() {
+      if (!this._hasAnnotation) return
+      const allAnnotations = this._phenoAnnotations()
+      // Each chart filters annotations by its own current visible x range independently
+      for (const c of [this._swellChart, this._fluxChart]) {
+        if (!c?.options?.plugins?.annotation) continue
+        const scale  = c.scales?.x
+        const labels = c.data?.labels
+        let minDate = null, maxDate = null
+        if (scale && labels?.length) {
+          const minIdx = Math.max(0, Math.floor(scale.min ?? 0))
+          const maxIdx = Math.min(labels.length - 1, Math.ceil(scale.max ?? labels.length - 1))
+          minDate = (labels[minIdx] ?? '').slice(0, 10) || null
+          maxDate = (labels[maxIdx] ?? '').slice(0, 10) || null
+        }
+        const visible = {}
+        for (const [key, ann] of Object.entries(allAnnotations)) {
+          const annDate = ((ann.xMin ?? ann.xValue) ?? '').slice(0, 10)
+          if (!minDate || !maxDate || (annDate >= minDate && annDate <= maxDate)) {
+            visible[key] = ann
+          }
+        }
+        c.options.plugins.annotation.annotations = visible
+        c.update('none')
+      }
     },
 
     _phenoAnnotations() {
