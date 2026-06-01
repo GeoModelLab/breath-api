@@ -354,6 +354,117 @@ wait_for_completion(BASE_URL)
 
 ---
 
+## 10 · Custom weather data
+
+By default BREATH downloads meteorological inputs automatically from NASA POWER.
+If you have your own station data, reanalysis output, or ERA5 downloads you can
+upload a daily weather CSV and the next simulation for that pixel will use it
+instead, skipping the remote download entirely.
+
+### 10.1 · Required CSV format
+
+The file must be comma-separated with the following columns (invariant culture,
+dot as decimal separator):
+
+| Column | Unit | Notes |
+|--------|------|-------|
+| `Date` | yyyy-MM-dd | One row per day |
+| `PAR` | MJ m⁻² d⁻¹ | Photosynthetically active radiation |
+| `airTemperatureMaximum` | °C | Daily maximum |
+| `airTemperatureMinimum` | °C | Daily minimum |
+| `solarRadiation` | MJ m⁻² d⁻¹ | Global shortwave |
+| `dewPointTemperature` | °C | Used to compute VPD |
+| `precipitation` | mm d⁻¹ | Total daily rainfall |
+| `latitude` | ° | Pixel latitude (constant per file) |
+
+Retrieve a minimal template with:
+
+```{r weather_template, eval=FALSE}
+template_csv <- request(paste0(BASE_URL, "/api/weather/template")) |>
+  req_perform() |>
+  resp_body_string()
+
+cat(template_csv)
+```
+
+### 10.2 · Upload
+
+```{r weather_upload, eval=FALSE}
+# Build a minimal daily data frame for demonstration
+library(readr)
+
+pixel_custom <- "44.6813_11.0217"
+
+weather_df <- tibble::tibble(
+  Date                    = seq(as.Date("2022-01-01"), as.Date("2024-12-31"), by = "day"),
+  PAR                     = 5.0,           # replace with real values
+  airTemperatureMaximum   = 12.0,
+  airTemperatureMinimum   =  2.0,
+  solarRadiation          = 10.0,
+  dewPointTemperature     = -1.0,
+  precipitation           =  1.5,
+  latitude                = 44.6813
+)
+
+weather_csv <- format_csv(weather_df)
+
+# Upload — the file is stored server-side as {pixel}_weather.csv
+resp_upload <- request(paste0(BASE_URL, "/api/weather/upload")) |>
+  req_url_query(pixel = pixel_custom) |>
+  req_method("POST") |>
+  req_headers("Content-Type" = "text/csv") |>
+  req_body_raw(weather_csv, type = "text/csv") |>
+  req_perform()
+
+resp_upload |> resp_body_json()
+```
+
+### 10.3 · Run with custom weather
+
+After uploading, run the simulation as usual.
+BREATH detects the cached file and skips the NASA POWER call automatically.
+
+```{r weather_run, eval=FALSE}
+custom_payload <- list(
+  settings = list(
+    pixelsRun           = list(pixel_custom),
+    startYear           = 2022L,
+    endYear             = 2024L,
+    inputWeather        = "daily",   # must match the file's daily resolution
+    modelVariant        = "Pheno",
+    calibration         = FALSE,
+    parametersDataFile  = "photothermalRequirements.csv",
+    simplexes           = 3L,
+    iterations          = 200L,
+    calibrationVariable = "Phenology"
+  )
+)
+
+request(paste0(BASE_URL, "/api/breath/run")) |>
+  req_method("POST") |>
+  req_body_json(custom_payload) |>
+  req_perform()
+
+wait_for_completion(BASE_URL)
+```
+
+### 10.4 · List and delete cached weather files
+
+```{r weather_manage, eval=FALSE}
+# List all pixels with a cached weather file
+request(paste0(BASE_URL, "/api/weather/list")) |>
+  req_perform() |>
+  resp_body_json()
+
+# Delete a specific pixel's file to revert to NASA POWER
+request(paste0(BASE_URL, "/api/weather/", pixel_custom)) |>
+  req_method("DELETE") |>
+  req_perform() |>
+  resp_body_json()
+```
+
+---
+
 ## Session info
 
 ```{r session}

@@ -998,32 +998,35 @@ window.ResultsPanel = defineComponent({
     _updateAnnotationsForZoom() {
       if (!this._hasAnnotation) return
       const allAnnotations = this._phenoAnnotations()
-      // Each chart filters annotations by its own current visible x range independently
       for (const c of [this._swellChart, this._fluxChart]) {
         if (!c?.options?.plugins?.annotation) continue
         const scale  = c.scales?.x
         const labels = c.data?.labels ?? []
-        // In hourly mode labels are full ISO datetimes; map date-only annotation keys to nearest label
-        const labelForDate = (dateStr) => {
-          const match = labels.find(l => (typeof l === 'string' ? l : '').slice(0, 10) === dateStr)
-          return match ?? dateStr
-        }
+        // Build a date→index map once per chart (handles both daily and hourly label formats)
+        const dateIdx = new Map()
+        labels.forEach((l, i) => {
+          const d = (typeof l === 'string' ? l : '').slice(0, 10)
+          if (d && !dateIdx.has(d)) dateIdx.set(d, i)
+        })
+        // Determine visible range in date strings
         let minDate = null, maxDate = null
         if (scale && labels.length) {
-          const minIdx = Math.max(0, Math.floor(scale.min ?? 0))
-          const maxIdx = Math.min(labels.length - 1, Math.ceil(scale.max ?? labels.length - 1))
-          minDate = (labels[minIdx] ?? '').slice(0, 10) || null
-          maxDate = (labels[maxIdx] ?? '').slice(0, 10) || null
+          const lo = Math.max(0, Math.floor(scale.min ?? 0))
+          const hi = Math.min(labels.length - 1, Math.ceil(scale.max ?? labels.length - 1))
+          minDate = (labels[lo] ?? '').slice(0, 10) || null
+          maxDate = (labels[hi] ?? '').slice(0, 10) || null
         }
         const visible = {}
         for (const [key, ann] of Object.entries(allAnnotations)) {
           const annDate = ((ann.xMin ?? ann.xValue) ?? '').slice(0, 10)
           if (!minDate || !maxDate || (annDate >= minDate && annDate <= maxDate)) {
-            // Clone and remap xMin/xMax/xValue to actual chart labels (needed for hourly category axis)
+            const idx = dateIdx.get(annDate)
+            if (idx == null) continue   // date not in this chart's data — skip
+            // Use numeric indices: chartjs-plugin-annotation maps these reliably on category axis
             const mapped = { ...ann }
-            if (ann.xMin != null) mapped.xMin = labelForDate(ann.xMin.slice(0, 10))
-            if (ann.xMax != null) mapped.xMax = labelForDate(ann.xMax.slice(0, 10))
-            if (ann.xValue != null) mapped.xValue = labelForDate(ann.xValue.slice(0, 10))
+            if (ann.xMin   != null) mapped.xMin   = idx
+            if (ann.xMax   != null) mapped.xMax   = idx
+            if (ann.xValue != null) mapped.xValue = idx
             visible[key] = mapped
           }
         }
