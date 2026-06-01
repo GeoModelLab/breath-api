@@ -1039,7 +1039,7 @@ window.ResultsPanel = defineComponent({
         egs: { color: '#f87171', label: 'EGS' },
       }
       const doyToDate = (yr, doy) => {
-        const d = new Date(parseInt(yr), 0, doy)
+        const d = new Date(Date.UTC(parseInt(yr), 0, doy))
         return d.toISOString().slice(0,10)
       }
       const nYears   = this.phenoMetrics.length
