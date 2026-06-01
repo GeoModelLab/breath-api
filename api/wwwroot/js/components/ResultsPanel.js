@@ -983,8 +983,8 @@ window.ResultsPanel = defineComponent({
         }
       }
       this.__syncing = false
-      // Double nextTick: first tick lets Vue flush, second lets Chart.js finish updating scales
-      nextTick(() => nextTick(() => this._updateAnnotationsForZoom()))
+      // No extra update() here — annotations use display() functions that
+      // self-filter on every render triggered by the zoom plugin itself.
     },
 
     resetAllZoom() {
@@ -992,47 +992,39 @@ window.ResultsPanel = defineComponent({
       this._swellChart?.resetZoom?.()
       this._fluxChart?.resetZoom?.()
       this.__syncing = false
-      nextTick(() => nextTick(() => this._updateAnnotationsForZoom()))
     },
 
-    _updateAnnotationsForZoom() {
-      if (!this._hasAnnotation) return
+    // Called once per chart build. Converts date-based pheno annotations to
+    // numeric-index annotations with a display() function so they self-filter
+    // on every zoom/pan render without needing an extra chart.update() call.
+    _applyAnnotationsToChart(c) {
+      if (!this._hasAnnotation || !c?.options?.plugins?.annotation) return
       const allAnnotations = this._phenoAnnotations()
-      for (const c of [this._swellChart, this._fluxChart]) {
-        if (!c?.options?.plugins?.annotation) continue
-        const scale  = c.scales?.x
-        const labels = c.data?.labels ?? []
-        // Build a date→index map once per chart (handles both daily and hourly label formats)
-        const dateIdx = new Map()
-        labels.forEach((l, i) => {
-          const d = (typeof l === 'string' ? l : '').slice(0, 10)
-          if (d && !dateIdx.has(d)) dateIdx.set(d, i)
-        })
-        // Determine visible range in date strings
-        let minDate = null, maxDate = null
-        if (scale && labels.length) {
-          const lo = Math.max(0, Math.floor(scale.min ?? 0))
-          const hi = Math.min(labels.length - 1, Math.ceil(scale.max ?? labels.length - 1))
-          minDate = (labels[lo] ?? '').slice(0, 10) || null
-          maxDate = (labels[hi] ?? '').slice(0, 10) || null
+      const labels = c.data?.labels ?? []
+      const dateIdx = new Map()
+      labels.forEach((l, i) => {
+        const d = (typeof l === 'string' ? l : '').slice(0, 10)
+        if (d && !dateIdx.has(d)) dateIdx.set(d, i)
+      })
+      const mapped = {}
+      for (const [key, ann] of Object.entries(allAnnotations)) {
+        const annDate = ((ann.xMin ?? ann.xValue) ?? '').slice(0, 10)
+        const idx = dateIdx.get(annDate)
+        if (idx == null) continue
+        const a = { ...ann }
+        if (ann.xMin   != null) a.xMin   = idx
+        if (ann.xMax   != null) a.xMax   = idx
+        if (ann.xValue != null) a.xValue = idx
+        // Hide when out of the visible range — avoids clamping to chart edge
+        a.display = (ctx) => {
+          const s = ctx.chart.scales?.x
+          if (!s) return true
+          return idx >= Math.floor(s.min ?? 0) && idx <= Math.ceil(s.max ?? Infinity)
         }
-        const visible = {}
-        for (const [key, ann] of Object.entries(allAnnotations)) {
-          const annDate = ((ann.xMin ?? ann.xValue) ?? '').slice(0, 10)
-          if (!minDate || !maxDate || (annDate >= minDate && annDate <= maxDate)) {
-            const idx = dateIdx.get(annDate)
-            if (idx == null) continue   // date not in this chart's data — skip
-            // Use numeric indices: chartjs-plugin-annotation maps these reliably on category axis
-            const mapped = { ...ann }
-            if (ann.xMin   != null) mapped.xMin   = idx
-            if (ann.xMax   != null) mapped.xMax   = idx
-            if (ann.xValue != null) mapped.xValue = idx
-            visible[key] = mapped
-          }
-        }
-        c.options.plugins.annotation.annotations = visible
-        c.update('none')
+        mapped[key] = a
       }
+      c.options.plugins.annotation.annotations = mapped
+      c.update('none')
     },
 
     _phenoAnnotations() {
@@ -1186,7 +1178,7 @@ window.ResultsPanel = defineComponent({
               }},
             },
             ...this._zoomPlugin(),
-            annotation: { annotations: this._phenoAnnotations() },
+            annotation: { annotations: {} },
           },
           scales: {
             x:      this._xAxis(),
@@ -1203,6 +1195,7 @@ window.ResultsPanel = defineComponent({
           },
         },
       })
+      this._applyAnnotationsToChart(this._swellChart)
     },
 
     buildFluxChart() {
@@ -1307,6 +1300,7 @@ window.ResultsPanel = defineComponent({
           },
         },
       })
+      this._applyAnnotationsToChart(this._fluxChart)
     },
 
     _computeHealth(rows, cols) {
@@ -1350,7 +1344,6 @@ window.ResultsPanel = defineComponent({
         this.buildFluxChart()
         if (this.show3D) this.build3D()
         this._rebuilding = false
-        nextTick(() => this._updateAnnotationsForZoom())
       })
     },
 
@@ -1422,7 +1415,6 @@ window.ResultsPanel = defineComponent({
       nextTick(() => {
         this.buildSwellChart()
         this.buildFluxChart()
-        nextTick(() => this._updateAnnotationsForZoom())
       })
     },
   },
