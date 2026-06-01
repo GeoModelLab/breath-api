@@ -4,7 +4,7 @@
 
 BREATH simulates hourly carbon fluxes (GPP, RECO, NEE) and phenology dynamics
 for forest ecosystems using a mechanistic two-layer canopy approach.
-Carbon exchanges are modelled with a VPRM-based framework (Lloyd-Taylor respiration);
+Carbon exchanges are inspired by the VPRM framework (Mahadevan et al. 2008) with a two-layer canopy and Lloyd-Taylor respiration;
 phenology is driven by the SWELL sub-model (6 phases: dormancy induction → endodormancy →
 ecodormancy → growth → greendown → senescence).
 
@@ -26,7 +26,7 @@ breath-api/
 ├── core/                      # Model engine (C# .NET 8)
 │   ├── source/                # Biophysical functions
 │   │   ├── functions/
-│   │   │   ├── exchanges/     # VPRM carbon flux model (GPP, RECO, NEE)
+│   │   │   ├── exchanges/     # Carbon flux model (GPP, RECO, NEE)
 │   │   │   └── phenology/     # SWELL phenology model
 │   │   ├── data/              # input / output data structures
 │   │   ├── utils.cs           # Core utilities (ET₀, PAR, water stress, …)
@@ -137,7 +137,7 @@ Results appear as interactive charts with KPIs directly in the browser.
 {
   "settings": {
     "startYear":           2015,
-    "endYear":             2022,
+    "endYear":             2025,
     "calibration":         false,
     "calibrationVariable": "Phenology",
     "simplexes":           5,
@@ -209,5 +209,5 @@ docker run -p 5244:5244 breath-api
 
 If you use BREATH in your research, please cite:
 
-> Bregaglio S. et al. (in review). *BREATH: a mechanistic model for ecosystem
-> carbon flux simulation beyond the satellite record*. Nature Geoscience.
+> Bregaglio S. et al. (in review). *Endogenous rhythms set the tempo of carbon exchange
+> in temperate deciduous forests.*

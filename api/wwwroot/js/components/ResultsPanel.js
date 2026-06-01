@@ -500,7 +500,7 @@ window.ResultsPanel = defineComponent({
       const gpp  = get('GPP','gpp')
       const reco = get('RECO','reco')
       const nee  = get('NEE','nee')
-      const toGC = arr => Math.round(arr.reduce((a,b)=>a+b,0) * 86400 * 12.01 / 1e6 / nYears)
+      const toGC = arr => +((arr.reduce((a,b)=>a+b,0) * 86400 * 12.01 / 1e6 / nYears).toFixed(1))
       const annGPP  = toGC(gpp)
       const annRECO = toGC(reco)
       const annNEE  = toGC(nee)
@@ -599,7 +599,7 @@ window.ResultsPanel = defineComponent({
         senescence: { gpp:0, reco:0, nee:0, n:0 },
         dormancy:   { gpp:0, reco:0, nee:0, n:0 },
       }
-      const toGC = (sum, n) => n ? Math.round(sum / n * 86400 * 12.01 / 1e6) : 0
+      const toGC = (sum, n) => n ? +(sum / n * 86400 * 12.01 / 1e6).toFixed(1) : 0
       const phaseFor = (yr, doy) => {
         const m = this.phenoMetrics.find(p => p.year == yr)
         if (!m) return null

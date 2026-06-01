@@ -61,8 +61,8 @@ window.HelpPanel = defineComponent({
               <div class="help-step">
                 <span class="step-num">3</span>
                 <div>
-                  <b>Set the year range</b> (default 2018–2022) and click <b>▶ Run BREATH</b>.<br>
-                  <span class="step-note">Weather is downloaded from NASA POWER and cached — re-running the same location is fast. Default range: 2022–2025.</span>
+                  <b>Set the year range</b> (default 2022–2025) and click <b>▶ Run BREATH</b>.<br>
+                  <span class="step-note">Weather is downloaded from NASA POWER and cached — re-running the same location is fast.</span>
                 </div>
               </div>
               <div class="help-step">
@@ -111,15 +111,15 @@ window.HelpPanel = defineComponent({
             <div class="help-model-variants">
               <div class="hmv-card hmv-baseline">
                 <div class="hmv-title">Baseline</div>
-                <div class="hmv-desc">No phenology. Canopy LAI and light extinction are constant throughout the year. Photosynthesis is driven purely by weather (light, temperature, VPD, soil moisture).</div>
+                <div class="hmv-desc">EVI is used as an instantaneous driver of carbon flux with no explicit representation of phenological state or circadian regulation. Environmental scalers (T, PAR, VPD, water stress) modulate a two-layer (overstory + understory) GPP. RECO follows Lloyd–Taylor temperature response with water modulation.</div>
               </div>
               <div class="hmv-card hmv-pheno">
                 <div class="hmv-title">Pheno</div>
-                <div class="hmv-desc">SWELL phenological model is active. The canopy cycles through dormancy induction → endodormancy (chilling) → ecodormancy (forcing) → growth → greendown → senescence each year.</div>
+                <div class="hmv-desc">Physiological parameters are continuously modulated by SWELL phenological progression. A photosynthetic scalar ϕ<sub>photo</sub> (0–1) tracks canopy development; a respiratory scalar ϕ<sub>resp</sub> (≥1) captures elevated construction costs during growth and maintenance costs during senescence. Autotrophic respiration is linked to antecedent GPP via a two-pool labile carbon substrate model.</div>
               </div>
               <div class="hmv-card hmv-circadian">
                 <div class="hmv-title">Circadian</div>
-                <div class="hmv-desc">SWELL + a diurnal (circadian) rhythm that modulates stomatal conductance and quantum yield within each day, producing a realistic morning/afternoon GPP asymmetry.</div>
+                <div class="hmv-desc">Pheno + endogenous circadian regulation of both photosynthesis and respiration. Generates realistic morning/afternoon GPP asymmetry (diurnal hysteresis) independently of instantaneous forcing. Circadian regulation provided +18% improvement in diurnal GPP accuracy and +33% for RECO vs Pheno alone.</div>
               </div>
             </div>
 
@@ -213,7 +213,7 @@ window.HelpPanel = defineComponent({
 BASE = "https://breath-api-thkm.onrender.com"
 payload = {"settings": {
     "pixelsRun": ["44.6813_11.0217"],
-    "startYear": 2022, "endYear": 2024,
+    "startYear": 2022, "endYear": 2025,
     "inputWeather": "hourly",
     "modelVariant": "Circadian",
     "calibration": False,
@@ -241,10 +241,18 @@ df  = pd.read_csv(io.StringIO(csv), parse_dates=["date"])</pre>
           <template v-if="tab==='about'">
             <p class="help-p">
               <b>BREATH</b> — Biophysical Rhythm of Ecosystem Activity &amp; Health<br>
-              A biophysical model for hourly simulation of GPP, RECO and NEE in temperate deciduous forests.
+              A process-based framework for hourly simulation of GPP, RECO and NEE in temperate deciduous forests, representing the internal physiological regulation of ecosystem metabolism.
             </p>
-            <p class="help-p">Based on VPRM (Mahadevan et al. 2008) with SWELL phenology (Delpierre et al. 2009 / Dufrêne-type).</p>
+            <p class="help-p">
+              BREATH builds on the conceptual structure of VPRM (Mahadevan et al. 2008) but departs from it by representing vegetation through an <b>internally simulated pheno-physiological state</b> rather than prescribing activity directly from remote sensing. The canopy is represented as <b>two functionally distinct layers</b>: an overstory layer whose activity scales with simulated fractional cover (θ), and an understory layer that dominates fluxes during dormancy and early growth.
+            </p>
             <div class="help-kv">
+              <span class="help-k">Baseline</span>
+              <span class="help-v">EVI used as instantaneous driver of carbon flux. No explicit phenological state or circadian regulation.</span>
+              <span class="help-k">Pheno</span>
+              <span class="help-v">Physiological parameters continuously modulated by SWELL phenological progression (dormancy → growth → canopy maturity → senescence). Autotrophic respiration linked to antecedent assimilation through a two-pool labile carbon substrate model.</span>
+              <span class="help-k">Circadian</span>
+              <span class="help-v">Pheno + endogenous circadian regulation of both photosynthesis and respiration, generating realistic morning/afternoon GPP asymmetry independently of instantaneous forcing.</span>
               <span class="help-k">Weather</span>
               <span class="help-v"><a href="https://power.larc.nasa.gov/" target="_blank" style="color:#3b82f6">NASA POWER</a> — hourly or daily, global coverage from 1981.</span>
               <span class="help-k">Satellite VI</span>
@@ -252,10 +260,10 @@ df  = pd.read_csv(io.StringIO(csv), parse_dates=["date"])</pre>
               <span class="help-k">Land cover</span>
               <span class="help-v"><a href="https://esa-worldcover.org/" target="_blank" style="color:#3b82f6">ESA WorldCover 2021</a> — 10 m global map, 11 classes.</span>
               <span class="help-k">Calibration</span>
-              <span class="help-v">Multi-start Nelder-Mead Simplex (3 restarts, 200 iterations per run).</span>
+              <span class="help-v">Multi-start Nelder-Mead Simplex (3 restarts, 200 iterations per run). Evaluated across 43 eddy-covariance sites (FLUXNET/ICOS/AmeriFlux/JapanFlux).</span>
             </div>
             <div class="help-tip">
-              BREATH model: Bregaglio et al. (2026, under review). Three model variants (Baseline, Pheno, Circadian) correspond to Table 3 of the original publication.
+              Bregaglio et al. (2026, under review). <i>Endogenous rhythms set the tempo of carbon exchange in temperate deciduous forests.</i> Phenological regulation reduced seasonal NEE errors by 15.8%; circadian regulation provided a further 18% improvement in diurnal GPP accuracy (33% for RECO) relative to the Pheno configuration.
             </div>
           </template>
 
