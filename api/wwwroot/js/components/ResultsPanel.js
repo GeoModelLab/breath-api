@@ -1031,7 +1031,7 @@ window.ResultsPanel = defineComponent({
           }
         }
         c.options.plugins.annotation.annotations = visible
-        c.update('none')
+        c.draw()   // repaint only — update() would reset the zoom scale state
       }
     },
 
