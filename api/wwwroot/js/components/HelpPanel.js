@@ -61,8 +61,8 @@ window.HelpPanel = defineComponent({
               <div class="help-step">
                 <span class="step-num">3</span>
                 <div>
-                  <b>Set the year range</b> (default 2018–2022) and click <b>▶ Run BREATH</b>.<br>
-                  <span class="step-note">Weather is downloaded from NASA POWER and cached — re-running the same location is fast. Default range: 2022–2025.</span>
+                  <b>Set the year range</b> (default 2022–2025) and click <b>▶ Run BREATH</b>.<br>
+                  <span class="step-note">Weather is downloaded from NASA POWER and cached — re-running the same location is fast.</span>
                 </div>
               </div>
               <div class="help-step">
@@ -213,7 +213,7 @@ window.HelpPanel = defineComponent({
 BASE = "https://breath-api-thkm.onrender.com"
 payload = {"settings": {
     "pixelsRun": ["44.6813_11.0217"],
-    "startYear": 2022, "endYear": 2024,
+    "startYear": 2022, "endYear": 2025,
     "inputWeather": "hourly",
     "modelVariant": "Circadian",
     "calibration": False,
@@ -243,7 +243,7 @@ df  = pd.read_csv(io.StringIO(csv), parse_dates=["date"])</pre>
               <b>BREATH</b> — Biophysical Rhythm of Ecosystem Activity &amp; Health<br>
               A biophysical model for hourly simulation of GPP, RECO and NEE in temperate deciduous forests.
             </p>
-            <p class="help-p">Based on VPRM (Mahadevan et al. 2008) with SWELL phenology (Delpierre et al. 2009 / Dufrêne-type).</p>
+            <p class="help-p">Inspired by the VPRM framework (Mahadevan et al. 2008), with a two-layer canopy approach and SWELL phenology (Delpierre et al. 2009 / Dufrêne-type). BREATH is not VPRM — it substantially extends the original model with endogenous phenological rhythms and circadian regulation of carbon exchange.</p>
             <div class="help-kv">
               <span class="help-k">Weather</span>
               <span class="help-v"><a href="https://power.larc.nasa.gov/" target="_blank" style="color:#3b82f6">NASA POWER</a> — hourly or daily, global coverage from 1981.</span>
@@ -255,7 +255,7 @@ df  = pd.read_csv(io.StringIO(csv), parse_dates=["date"])</pre>
               <span class="help-v">Multi-start Nelder-Mead Simplex (3 restarts, 200 iterations per run).</span>
             </div>
             <div class="help-tip">
-              BREATH model: Bregaglio et al. (2026, under review). Three model variants (Baseline, Pheno, Circadian) correspond to Table 3 of the original publication.
+              Bregaglio et al. (2026, under review). <i>Endogenous rhythms set the tempo of carbon exchange in temperate deciduous forests.</i> Three model variants (Baseline, Pheno, Circadian) correspond to Table 3 of the manuscript.
             </div>
           </template>
 
