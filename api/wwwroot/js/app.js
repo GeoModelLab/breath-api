@@ -47,7 +47,7 @@ createApp({
             ← New location
           </button>
 
-          <a class="nav-link" href="/swagger" target="_blank">API ↗</a>
+          <a class="nav-link" href="/docs/breath_api_demo.html" target="_blank">API ↗</a>
           <button class="help-btn" @click="helpOpen=!helpOpen; localStorage.setItem('breath_help_seen','1')" title="Help &amp; Tutorial">?</button>
         </div>
       </header>
@@ -183,6 +183,9 @@ createApp({
       const entry = this.$refs.mapPanel?.pointHistory?.find(h => h.lat === lat && h.lon === lon)
       const csv = entry?.csv ?? this.lastCsvText
       if (!csv) return
+      // Update active point so the next Run targets this location
+      this.point = { lat, lon }
+      this.selectedPixels = []
       this.$refs.results?.loadCsv(csv)
       this.$refs.results.locationName = this.$refs.mapPanel?.locationName || entry?.label || ''
       this.appState = 'completed'

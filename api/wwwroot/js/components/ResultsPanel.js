@@ -55,7 +55,7 @@ const VAR_UNITS = {
   nee:'µmol m⁻² s⁻¹',
   swell:'EVI', reference:'EVI', vegetationcover:'-',
   t:'°C', soilt:'°C', tleafover:'°C', tleafunder:'°C',
-  sw:'W m⁻²', p:'mm h⁻¹', rh:'%', vpd:'kPa', et0:'mm h⁻¹',
+  sw:'W m⁻²', p:'mm d⁻¹', rh:'%', vpd:'kPa', et0:'mm d⁻¹',
   tscale:'0–1', tscaleover:'0–1', tscaleunder:'0–1', tscalereco:'0–1',
   parscale:'0–1', parscaleover:'0–1', parscaleunder:'0–1',
   waterstress:'0–1', vpdscale:'0–1',
@@ -75,6 +75,8 @@ function yAxisFor(chart, name) {
 
 // parscale is 0 at night by definition; average only daytime (non-zero) values for daily display
 const DAYTIME_ONLY = /parscale/i
+// et0 and p are rates (mm h⁻¹) — show daily totals, not hourly averages
+const DAILY_SUM    = /^(et0|p)$/i
 
 function dailyAgg(rows, cols) {
   const d = {}
@@ -88,7 +90,7 @@ function dailyAgg(rows, cols) {
     })
   }
   return Object.entries(d).sort(([a],[b])=>a<b?-1:1)
-    .map(([date,v]) => { const row={date}; cols.forEach(c=>{ row[c]=mean(v[c]) }); return row })
+    .map(([date,v]) => { const row={date}; cols.forEach(c=>{ row[c]= DAILY_SUM.test(c) ? v[c].reduce((a,b)=>a+b,0) : mean(v[c]) }); return row })
 }
 
 const VAR_TAB_GROUPS = [
@@ -298,7 +300,7 @@ window.ResultsPanel = defineComponent({
         <!-- ── Phenological metrics ── -->
         <div v-if="phenoMetrics.length" class="pheno-table-wrap">
           <div class="table-toggle" @click="showPhenoTable=!showPhenoTable">
-            <span>Phenological dates (DOY)</span>
+            <span>Phenological dates</span>
             <span class="toggle-arrow">{{ showPhenoTable ? '▲' : '▼' }}</span>
           </div>
           <table v-if="showPhenoTable" class="year-table">
@@ -790,8 +792,8 @@ window.ResultsPanel = defineComponent({
     },
     doyToLabel(year, doy) {
       if (doy == null) return '—'
-      const d = new Date(parseInt(year), 0, doy)
-      return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+      const d = new Date(Date.UTC(parseInt(year), 0, doy))
+      return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })
     },
     clearBrush() { this.dateFrom=''; this.dateTo='' },
     varColor, IS_WEATHER, IS_FLUX,
@@ -929,7 +931,7 @@ window.ResultsPanel = defineComponent({
           const vals = swellByDoy[d]
           if (!vals?.length) return null
           const avg = vals.reduce((a,b)=>a+b,0)/vals.length
-          return zMin + avg * (zMax - zMin)
+          return zMin + avg * (zMax - zMin) * 2
         })
         traces.push({
           type: 'scatter3d',
@@ -996,32 +998,35 @@ window.ResultsPanel = defineComponent({
     _updateAnnotationsForZoom() {
       if (!this._hasAnnotation) return
       const allAnnotations = this._phenoAnnotations()
-      // Each chart filters annotations by its own current visible x range independently
       for (const c of [this._swellChart, this._fluxChart]) {
         if (!c?.options?.plugins?.annotation) continue
         const scale  = c.scales?.x
         const labels = c.data?.labels ?? []
-        // In hourly mode labels are full ISO datetimes; map date-only annotation keys to nearest label
-        const labelForDate = (dateStr) => {
-          const match = labels.find(l => (typeof l === 'string' ? l : '').slice(0, 10) === dateStr)
-          return match ?? dateStr
-        }
+        // Build a date→index map once per chart (handles both daily and hourly label formats)
+        const dateIdx = new Map()
+        labels.forEach((l, i) => {
+          const d = (typeof l === 'string' ? l : '').slice(0, 10)
+          if (d && !dateIdx.has(d)) dateIdx.set(d, i)
+        })
+        // Determine visible range in date strings
         let minDate = null, maxDate = null
         if (scale && labels.length) {
-          const minIdx = Math.max(0, Math.floor(scale.min ?? 0))
-          const maxIdx = Math.min(labels.length - 1, Math.ceil(scale.max ?? labels.length - 1))
-          minDate = (labels[minIdx] ?? '').slice(0, 10) || null
-          maxDate = (labels[maxIdx] ?? '').slice(0, 10) || null
+          const lo = Math.max(0, Math.floor(scale.min ?? 0))
+          const hi = Math.min(labels.length - 1, Math.ceil(scale.max ?? labels.length - 1))
+          minDate = (labels[lo] ?? '').slice(0, 10) || null
+          maxDate = (labels[hi] ?? '').slice(0, 10) || null
         }
         const visible = {}
         for (const [key, ann] of Object.entries(allAnnotations)) {
           const annDate = ((ann.xMin ?? ann.xValue) ?? '').slice(0, 10)
           if (!minDate || !maxDate || (annDate >= minDate && annDate <= maxDate)) {
-            // Clone and remap xMin/xMax/xValue to actual chart labels (needed for hourly category axis)
+            const idx = dateIdx.get(annDate)
+            if (idx == null) continue   // date not in this chart's data — skip
+            // Use numeric indices: chartjs-plugin-annotation maps these reliably on category axis
             const mapped = { ...ann }
-            if (ann.xMin != null) mapped.xMin = labelForDate(ann.xMin.slice(0, 10))
-            if (ann.xMax != null) mapped.xMax = labelForDate(ann.xMax.slice(0, 10))
-            if (ann.xValue != null) mapped.xValue = labelForDate(ann.xValue.slice(0, 10))
+            if (ann.xMin   != null) mapped.xMin   = idx
+            if (ann.xMax   != null) mapped.xMax   = idx
+            if (ann.xValue != null) mapped.xValue = idx
             visible[key] = mapped
           }
         }
@@ -1308,8 +1313,8 @@ window.ResultsPanel = defineComponent({
       const AXES = [
         { key: 'tscale',      label: 'T scale',   color: '#fbbf24', invert: false },
         { key: 'parscale',    label: 'PAR scale', color: '#fef08a', invert: false },
-        { key: 'vpdscale',    label: 'VPD scale', color: '#c084fc', invert: false },
-        { key: 'waterstress', label: 'Water',     color: '#818cf8', invert: true  },
+        { key: 'vpdscale',    label: 'VPD scale', color: '#c084fc', invert: true  },
+        { key: 'waterstress', label: 'Water avail.', color: '#818cf8', invert: false },
       ]
       const colMap = {}
       for (const ax of AXES) {

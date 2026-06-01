@@ -179,6 +179,9 @@ namespace runner
                         optimizer.weatherData = weatherData;
                     }
 
+                    // Reset idPixel to exactly this one pixel so oneShot doesn't
+                    // re-run previously processed pixels with the current weather data.
+                    optimizer.idPixel.Clear();
                     optimizer.idPixel[pixel] = new pixel
                     {
                         id        = pixel,
