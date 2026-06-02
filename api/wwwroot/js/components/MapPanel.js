@@ -3,7 +3,9 @@ const { defineComponent } = Vue
 
 const DARK_TILE    = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
 const DARK_ATTR    = '&copy; <a href="https://carto.com/">CartoDB</a> &copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
-const FOREST_WMS   = 'https://services.terrascope.be/wms/v2'
+// Tile proxy routes — avoids CORS/auth issues with the upstream Terrascope WMS
+const FOREST_TILE  = '/api/landcover/tile/{z}/{x}/{y}.png'
+const FOREST_WMS   = '/api/landcover/wms'
 const FOREST_ATTR  = '&copy; <a href="https://esa-worldcover.org/">ESA WorldCover 2021</a>'
 
 const MARKER_ICON = L.icon({
@@ -45,9 +47,7 @@ function makeSpotlightLayer(targetRgb) {
       tile.width  = size.x
       tile.height = size.y
       const bbox = tileToMercator(coords.x, coords.y, coords.z)
-      const url  = `${FOREST_WMS}?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap`
-                 + `&LAYERS=WORLDCOVER_2021_MAP&FORMAT=image/png&TRANSPARENT=true`
-                 + `&WIDTH=${size.x}&HEIGHT=${size.y}&SRS=EPSG:3857&BBOX=${bbox}`
+      const url  = `${FOREST_WMS}?w=${size.x}&h=${size.y}&bbox=${bbox}`
       const img = new Image()
       img.crossOrigin = 'anonymous'
       img.onload = () => {
@@ -179,9 +179,8 @@ window.MapPanel = defineComponent({
     this.map = L.map('leaflet-map', { center: [47, 12], zoom: 5 })
     L.tileLayer(DARK_TILE, { attribution: DARK_ATTR, maxZoom: 19 }).addTo(this.map)
 
-    this.forestLayer = L.tileLayer.wms(FOREST_WMS, {
-      layers: 'WORLDCOVER_2021_MAP', format: 'image/png',
-      transparent: true, opacity: 0.55, attribution: FOREST_ATTR,
+    this.forestLayer = L.tileLayer(FOREST_TILE, {
+      opacity: 0.55, attribution: FOREST_ATTR, maxZoom: 13,
     })
     this.forestLayer.addTo(this.map)
 
@@ -300,10 +299,7 @@ window.MapPanel = defineComponent({
 
     async checkForest(lat, lon) {
       try {
-        const bbox = `${lon-.001},${lat-.001},${lon+.001},${lat+.001}`
-        const url  = `${FOREST_WMS}?SERVICE=WMS&VERSION=1.1.1`
-          + `&REQUEST=GetFeatureInfo&LAYERS=WORLDCOVER_2021_MAP&QUERY_LAYERS=WORLDCOVER_2021_MAP`
-          + `&BBOX=${bbox}&WIDTH=3&HEIGHT=3&X=1&Y=1&SRS=EPSG:4326&INFO_FORMAT=application/json`
+        const url = `/api/landcover/featureinfo?lat=${lat}&lon=${lon}`
         const r = await fetch(url, { signal: AbortSignal.timeout(5000) })
         if (!r.ok) return
         const data = await r.json()
