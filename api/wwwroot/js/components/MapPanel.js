@@ -3,10 +3,12 @@ const { defineComponent } = Vue
 
 const DARK_TILE    = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
 const DARK_ATTR    = '&copy; <a href="https://carto.com/">CartoDB</a> &copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
-// Tile proxy routes — avoids CORS/auth issues with the upstream Terrascope WMS
-const FOREST_TILE  = '/api/landcover/tile/{z}/{x}/{y}.png'
-const FOREST_WMS   = '/api/landcover/wms'
-const FOREST_ATTR  = '&copy; <a href="https://esa-worldcover.org/">ESA WorldCover 2021</a>'
+// NASA GIBS — MODIS Terra Land Cover Type 1 (IGBP) 2021, publicly accessible, CORS-enabled
+const GIBS_LC = 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best'
+             + '/MODIS_Terra_Land_Cover_Type1/default/2021-01-01'
+             + '/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png'
+const FOREST_ATTR = '&copy; <a href="https://nasa.gov/">NASA</a> MODIS Land Cover · '
+                  + '<a href="https://earthdata.nasa.gov/eosdis/science-system-description/eosdis-components/gibs">GIBS</a>'
 
 const MARKER_ICON = L.icon({
   iconUrl:       'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
@@ -16,29 +18,26 @@ const MARKER_ICON = L.icon({
   popupAnchor: [1, -30], shadowSize:  [36, 36],
 })
 
+// MODIS IGBP Land Cover Type 1 — RGB values match GIBS colormap
 const LAND_CLASSES = [
-  { cls: 10, color: '#006400', rgb: [0,100,0],     label: 'Tree cover (10)',     target: true },
-  { cls: 20, color: '#ffbb22', rgb: [255,187,34],  label: 'Shrubland (20)',      target: false },
-  { cls: 30, color: '#ffff4c', rgb: [255,255,76],  label: 'Grassland (30)',      target: false },
-  { cls: 40, color: '#f096ff', rgb: [240,150,255], label: 'Cropland (40)',       target: false },
-  { cls: 50, color: '#fa0000', rgb: [250,0,0],     label: 'Built-up (50)',       target: false },
-  { cls: 60, color: '#b4b4b4', rgb: [180,180,180], label: 'Bare / sparse (60)', target: false },
-  { cls: 80, color: '#0064c8', rgb: [0,100,200],   label: 'Water (80)',          target: false },
+  { cls:  1, color: '#05450a', rgb: [  5, 69, 10], label: 'Evergreen Needleleaf Forest', target: false },
+  { cls:  2, color: '#086a10', rgb: [  8,106, 16], label: 'Evergreen Broadleaf Forest',  target: false },
+  { cls:  3, color: '#54a708', rgb: [ 84,167,  8], label: 'Deciduous Needleleaf Forest', target: false },
+  { cls:  4, color: '#78d203', rgb: [120,210,  3], label: 'Deciduous Broadleaf Forest',  target: true  },
+  { cls:  5, color: '#009900', rgb: [  0,153,  0], label: 'Mixed Forests',               target: false },
+  { cls:  6, color: '#c6b044', rgb: [198,176, 68], label: 'Closed Shrublands',           target: false },
+  { cls:  7, color: '#dcd159', rgb: [220,209, 89], label: 'Open Shrublands',             target: false },
+  { cls:  9, color: '#fbff13', rgb: [251,255, 19], label: 'Savannas',                    target: false },
+  { cls: 10, color: '#b6ff05', rgb: [182,255,  5], label: 'Grasslands',                  target: false },
+  { cls: 12, color: '#c24f44', rgb: [194, 79, 68], label: 'Croplands',                   target: false },
+  { cls: 13, color: '#a5a5a5', rgb: [165,165,165], label: 'Urban / Built-up',             target: false },
+  { cls: 17, color: '#1c0dff', rgb: [ 28, 13,255], label: 'Water Bodies',                target: false },
 ]
 
-// Canvas GridLayer: fetches WMS tiles and dims pixels that don't match targetRgb.
+// Canvas GridLayer: fetches GIBS MODIS tiles and dims pixels that don't match targetRgb.
 function makeSpotlightLayer(targetRgb) {
   const [tr, tg, tb] = targetRgb
-  const THRESH = 50
-
-  function tileToMercator(x, y, z) {
-    const R = 6378137, n = Math.pow(2, z), full = 2 * Math.PI * R
-    const xMin = x     / n * full - Math.PI * R
-    const xMax = (x+1) / n * full - Math.PI * R
-    const yMax = Math.PI * R - y     / n * full
-    const yMin = Math.PI * R - (y+1) / n * full
-    return `${xMin},${yMin},${xMax},${yMax}`
-  }
+  const THRESH = 40
 
   return L.GridLayer.extend({
     createTile(coords, done) {
@@ -46,8 +45,14 @@ function makeSpotlightLayer(targetRgb) {
       const tile  = L.DomUtil.create('canvas')
       tile.width  = size.x
       tile.height = size.y
-      const bbox = tileToMercator(coords.x, coords.y, coords.z)
-      const url  = `${FOREST_WMS}?w=${size.x}&h=${size.y}&bbox=${bbox}`
+      // Clamp zoom to GIBS max native zoom (7) for tile fetching
+      const tz   = Math.min(coords.z, 7)
+      const scale = Math.pow(2, coords.z - tz)
+      const tx   = Math.floor(coords.x / scale)
+      const ty   = Math.floor(coords.y / scale)
+      const url  = `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best`
+                 + `/MODIS_Terra_Land_Cover_Type1/default/2021-01-01`
+                 + `/GoogleMapsCompatible_Level7/${tz}/${ty}/${tx}.png`
       const img = new Image()
       img.crossOrigin = 'anonymous'
       img.onload = () => {
@@ -116,7 +121,7 @@ window.MapPanel = defineComponent({
 
       <!-- ── Legend ── -->
       <div v-if="legendOpen" class="map-legend">
-        <div class="legend-title">ESA WorldCover 2021</div>
+        <div class="legend-title">MODIS Land Cover 2021</div>
         <div v-for="lc in LAND_CLASSES" :key="lc.cls"
              :class="['legend-row', lc.target && 'legend-target', spotlightClass===lc.cls && 'legend-active']"
              @click="toggleSpotlight(lc.cls)"
@@ -179,8 +184,9 @@ window.MapPanel = defineComponent({
     this.map = L.map('leaflet-map', { center: [47, 12], zoom: 5 })
     L.tileLayer(DARK_TILE, { attribution: DARK_ATTR, maxZoom: 19 }).addTo(this.map)
 
-    this.forestLayer = L.tileLayer(FOREST_TILE, {
-      opacity: 0.55, attribution: FOREST_ATTR, maxZoom: 13,
+    this.forestLayer = L.tileLayer(GIBS_LC, {
+      opacity: 0.55, attribution: FOREST_ATTR,
+      maxNativeZoom: 7, maxZoom: 13,
     })
     this.forestLayer.addTo(this.map)
 
