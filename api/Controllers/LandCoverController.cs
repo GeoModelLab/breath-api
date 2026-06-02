@@ -31,7 +31,7 @@ public class LandCoverController : ControllerBase
     // COG header cache: S3 url → parsed IFD list
     private static readonly ConcurrentDictionary<string, CogMeta?> _cogCache = new();
 
-    // ── Public endpoint ─────────────────────────────────────────────────────
+    // ── Public endpoints ─────────────────────────────────────────────────────
 
     [HttpGet("tile/{z}/{x}/{y}.png")]
     [ResponseCache(Duration = 86400 * 7, Location = ResponseCacheLocation.Any)]
@@ -39,6 +39,55 @@ public class LandCoverController : ControllerBase
     {
         try   { return File(await RenderTile(z, x, y), "image/png"); }
         catch { return File(_empty, "image/png"); }
+    }
+
+    /// <summary>
+    /// Diagnostic endpoint: GET /api/landcover/debug?lat=48&amp;lon=9
+    /// Returns JSON with S3 reachability, BigTIFF detection, IFD list.
+    /// </summary>
+    [HttpGet("debug")]
+    public async Task<IActionResult> Debug([FromQuery] int lat = 48, [FromQuery] int lon = 9)
+    {
+        int cogLat = (int)Math.Floor(lat / 3.0) * 3;
+        int cogLon = (int)Math.Floor(lon / 3.0) * 3;
+        string url = CogUrl(cogLon, cogLat);
+
+        var result = new System.Text.StringBuilder();
+        result.AppendLine($"url: {url}");
+
+        byte[]? hdr = null;
+        try
+        {
+            hdr = await FetchRange(url, 0, 524288);
+            result.AppendLine($"fetch_ok: true, bytes: {hdr.Length}");
+        }
+        catch (Exception ex)
+        {
+            result.AppendLine($"fetch_ok: false, error: {ex.Message}");
+            return Content(result.ToString(), "text/plain");
+        }
+
+        if (hdr.Length < 8) { result.AppendLine("too_short"); return Content(result.ToString(), "text/plain"); }
+
+        bool le    = hdr[0] == 'I';
+        int  magic = (le ? hdr[2] | (hdr[3]<<8) : (hdr[2]<<8)|hdr[3]);
+        result.AppendLine($"byte_order: {(le?"little":"big")}-endian");
+        result.AppendLine($"magic: {magic} ({(magic==42?"ClassicTIFF":magic==43?"BigTIFF":"UNKNOWN")})");
+
+        var meta = await GetCogMeta(url);
+        if (meta == null)
+        {
+            result.AppendLine("meta: null (parse failed)");
+        }
+        else
+        {
+            result.AppendLine($"bigtiff: {meta.BigTiff}");
+            result.AppendLine($"ifd_count: {meta.Ifds.Count}");
+            foreach (var ifd in meta.Ifds)
+                result.AppendLine($"  ifd {ifd.Width}x{ifd.Height} tile={ifd.TileW}x{ifd.TileH} ntiles={ifd.Offsets?.Length}");
+        }
+
+        return Content(result.ToString(), "text/plain");
     }
 
     // ── Tile rendering ───────────────────────────────────────────────────────
