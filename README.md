@@ -127,7 +127,7 @@ Results appear as interactive charts with KPIs directly in the browser.
 |--------|--------|
 | **Click** on forest pixel | Select single point |
 | **⬚ Area** drag | Draw a multi-pixel grid (up to 25 pixels) |
-| **Forest mask** toggle | Show/hide ESA WorldCover 2021 forest layer |
+| **Forest mask** toggle | Show/hide MODIS IGBP 2021 land-cover layer |
 | Click land-cover legend row | Spotlight that land-cover class on the map |
 
 ### Single-point simulation

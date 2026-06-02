@@ -131,13 +131,13 @@ window.MapPanel = defineComponent({
           <span v-if="spotlightClass===lc.cls" class="legend-spot-icon">●</span>
         </div>
         <div class="legend-note">
-          Model valid for deciduous broadleaf forests only.<br>
+          MODIS IGBP 2021 · BREATH targets Deciduous Broadleaf Forest (class 4).<br>
           Click a class to highlight it on the map.
         </div>
       </div>
 
       <div v-if="forestWarn" class="forest-warn">
-        ⚠️ Point may not be in dense tree cover. Proceed with care.
+        ⚠️ Point may not be in forest cover (MODIS IGBP). Proceed with care.
       </div>
     </div>
   `,
@@ -304,17 +304,34 @@ window.MapPanel = defineComponent({
     },
 
     async checkForest(lat, lon) {
+      // Sample the GIBS MODIS Land Cover tile at the click location and check
+      // if the pixel belongs to a forest class (IGBP 1–5).
       try {
-        const url = `/api/landcover/featureinfo?lat=${lat}&lon=${lon}`
-        const r = await fetch(url, { signal: AbortSignal.timeout(5000) })
-        if (!r.ok) return
-        const data = await r.json()
-        const isForest = (data.features ?? []).some(f => {
-          const cls = f.properties?.Map_Display_Class ?? f.properties?.class ?? f.properties?.DN
-          return String(cls) === '10'
-        })
-        this.forestWarn = !isForest
-      } catch { /* fail silently */ }
+        const z  = 7
+        const n  = Math.pow(2, z)
+        const xf = (lon + 180) / 360 * n
+        const latR = lat * Math.PI / 180
+        const yf = (1 - Math.log(Math.tan(latR) + 1 / Math.cos(latR)) / Math.PI) / 2 * n
+        const tx = Math.floor(xf), ty = Math.floor(yf)
+        const px = Math.floor((xf - tx) * 256), py = Math.floor((yf - ty) * 256)
+        const url = `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best`
+                  + `/MODIS_Terra_Land_Cover_Type1/default/2021-01-01`
+                  + `/GoogleMapsCompatible_Level7/${z}/${ty}/${tx}.png`
+        const img = new Image()
+        img.crossOrigin = 'anonymous'
+        await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url })
+        const cv = document.createElement('canvas')
+        cv.width = 256; cv.height = 256
+        const ctx = cv.getContext('2d')
+        ctx.drawImage(img, 0, 0)
+        const [r, g, b] = ctx.getImageData(px, py, 1, 1).data
+        // IGBP forest classes 1–5 and their GIBS colormap RGB values
+        const FOREST_RGBS = [[5,69,10],[8,106,16],[84,167,8],[120,210,3],[0,153,0]]
+        const THRESH = 45
+        this.forestWarn = !FOREST_RGBS.some(([fr,fg,fb]) =>
+          Math.abs(r-fr) + Math.abs(g-fg) + Math.abs(b-fb) <= THRESH
+        )
+      } catch { this.forestWarn = false }
     },
 
     // ── Area draw mode ─────────────────────────────────────────────────────
