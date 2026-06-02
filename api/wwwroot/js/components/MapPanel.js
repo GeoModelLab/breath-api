@@ -3,8 +3,9 @@ const { defineComponent } = Vue
 
 const DARK_TILE    = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
 const DARK_ATTR    = '&copy; <a href="https://carto.com/">CartoDB</a> &copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
-const FOREST_WMS   = 'https://services.terrascope.be/wms/v2'
-const FOREST_ATTR  = '&copy; <a href="https://esa-worldcover.org/">ESA WorldCover 2021</a>'
+// ESA WorldCover 2021 — served via our COG proxy
+const LC_TILE    = '/api/landcover/tile/{z}/{x}/{y}.png'
+const FOREST_ATTR = '&copy; <a href="https://esa-worldcover.org/">ESA WorldCover 2021</a>'
 
 const MARKER_ICON = L.icon({
   iconUrl:       'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
@@ -14,29 +15,25 @@ const MARKER_ICON = L.icon({
   popupAnchor: [1, -30], shadowSize:  [36, 36],
 })
 
+// ESA WorldCover 2021 classes — RGB values match COG proxy colormap
 const LAND_CLASSES = [
-  { cls: 10, color: '#006400', rgb: [0,100,0],     label: 'Tree cover (10)',     target: true },
-  { cls: 20, color: '#ffbb22', rgb: [255,187,34],  label: 'Shrubland (20)',      target: false },
-  { cls: 30, color: '#ffff4c', rgb: [255,255,76],  label: 'Grassland (30)',      target: false },
-  { cls: 40, color: '#f096ff', rgb: [240,150,255], label: 'Cropland (40)',       target: false },
-  { cls: 50, color: '#fa0000', rgb: [250,0,0],     label: 'Built-up (50)',       target: false },
-  { cls: 60, color: '#b4b4b4', rgb: [180,180,180], label: 'Bare / sparse (60)', target: false },
-  { cls: 80, color: '#0064c8', rgb: [0,100,200],   label: 'Water (80)',          target: false },
+  { cls: 10, color: '#006400', rgb: [  0,100,  0], label: 'Tree Cover',              target: true  },
+  { cls: 20, color: '#ffbb22', rgb: [255,187, 34], label: 'Shrubland',               target: false },
+  { cls: 30, color: '#ffff4c', rgb: [255,255, 76], label: 'Grassland',               target: false },
+  { cls: 40, color: '#f096ff', rgb: [240,150,255], label: 'Cropland',                target: false },
+  { cls: 50, color: '#fa0000', rgb: [250,  0,  0], label: 'Built-up',                target: false },
+  { cls: 60, color: '#b4b4b4', rgb: [180,180,180], label: 'Bare / Sparse vegetation',target: false },
+  { cls: 70, color: '#f0f0f0', rgb: [240,240,240], label: 'Snow and Ice',            target: false },
+  { cls: 80, color: '#0032c8', rgb: [  0, 50,200], label: 'Permanent Water Bodies',  target: false },
+  { cls: 90, color: '#0096a0', rgb: [  0,150,160], label: 'Herbaceous Wetland',      target: false },
+  { cls: 95, color: '#00cf75', rgb: [  0,207,117], label: 'Mangroves',               target: false },
+  { cls: 100,color: '#fae6a0', rgb: [250,230,160], label: 'Moss and Lichen',         target: false },
 ]
 
-// Canvas GridLayer: fetches WMS tiles and dims pixels that don't match targetRgb.
+// Canvas GridLayer: fetches COG proxy tiles and dims pixels that don't match targetRgb.
 function makeSpotlightLayer(targetRgb) {
   const [tr, tg, tb] = targetRgb
-  const THRESH = 50
-
-  function tileToMercator(x, y, z) {
-    const R = 6378137, n = Math.pow(2, z), full = 2 * Math.PI * R
-    const xMin = x     / n * full - Math.PI * R
-    const xMax = (x+1) / n * full - Math.PI * R
-    const yMax = Math.PI * R - y     / n * full
-    const yMin = Math.PI * R - (y+1) / n * full
-    return `${xMin},${yMin},${xMax},${yMax}`
-  }
+  const THRESH = 40
 
   return L.GridLayer.extend({
     createTile(coords, done) {
@@ -44,10 +41,8 @@ function makeSpotlightLayer(targetRgb) {
       const tile  = L.DomUtil.create('canvas')
       tile.width  = size.x
       tile.height = size.y
-      const bbox = tileToMercator(coords.x, coords.y, coords.z)
-      const url  = `${FOREST_WMS}?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap`
-                 + `&LAYERS=WORLDCOVER_2021_MAP&FORMAT=image/png&TRANSPARENT=true`
-                 + `&WIDTH=${size.x}&HEIGHT=${size.y}&SRS=EPSG:3857&BBOX=${bbox}`
+      const { z, x, y } = coords
+      const url  = `/api/landcover/tile/${z}/${x}/${y}.png`
       const img = new Image()
       img.crossOrigin = 'anonymous'
       img.onload = () => {
@@ -126,13 +121,13 @@ window.MapPanel = defineComponent({
           <span v-if="spotlightClass===lc.cls" class="legend-spot-icon">●</span>
         </div>
         <div class="legend-note">
-          Model valid for deciduous broadleaf forests only.<br>
+          ESA WorldCover 2021 · BREATH targets Tree Cover (class 10).<br>
           Click a class to highlight it on the map.
         </div>
       </div>
 
       <div v-if="forestWarn" class="forest-warn">
-        ⚠️ Point may not be in dense tree cover. Proceed with care.
+        ⚠️ Point may not be in Tree Cover (ESA WorldCover). Proceed with care.
       </div>
     </div>
   `,
@@ -179,9 +174,9 @@ window.MapPanel = defineComponent({
     this.map = L.map('leaflet-map', { center: [47, 12], zoom: 5 })
     L.tileLayer(DARK_TILE, { attribution: DARK_ATTR, maxZoom: 19 }).addTo(this.map)
 
-    this.forestLayer = L.tileLayer.wms(FOREST_WMS, {
-      layers: 'WORLDCOVER_2021_MAP', format: 'image/png',
-      transparent: true, opacity: 0.55, attribution: FOREST_ATTR,
+    this.forestLayer = L.tileLayer(LC_TILE, {
+      opacity: 0.65, attribution: FOREST_ATTR,
+      maxNativeZoom: 13, maxZoom: 19,
     })
     this.forestLayer.addTo(this.map)
 
@@ -299,20 +294,25 @@ window.MapPanel = defineComponent({
     },
 
     async checkForest(lat, lon) {
+      // Sample the COG proxy tile at the click location and check for Tree Cover (class 10, RGB ~[0,100,0]).
       try {
-        const bbox = `${lon-.001},${lat-.001},${lon+.001},${lat+.001}`
-        const url  = `${FOREST_WMS}?SERVICE=WMS&VERSION=1.1.1`
-          + `&REQUEST=GetFeatureInfo&LAYERS=WORLDCOVER_2021_MAP&QUERY_LAYERS=WORLDCOVER_2021_MAP`
-          + `&BBOX=${bbox}&WIDTH=3&HEIGHT=3&X=1&Y=1&SRS=EPSG:4326&INFO_FORMAT=application/json`
-        const r = await fetch(url, { signal: AbortSignal.timeout(5000) })
-        if (!r.ok) return
-        const data = await r.json()
-        const isForest = (data.features ?? []).some(f => {
-          const cls = f.properties?.Map_Display_Class ?? f.properties?.class ?? f.properties?.DN
-          return String(cls) === '10'
-        })
-        this.forestWarn = !isForest
-      } catch { /* fail silently */ }
+        const z  = 10
+        const n  = Math.pow(2, z)
+        const xf = (lon + 180) / 360 * n
+        const latR = lat * Math.PI / 180
+        const yf = (1 - Math.log(Math.tan(latR) + 1 / Math.cos(latR)) / Math.PI) / 2 * n
+        const tx = Math.floor(xf), ty = Math.floor(yf)
+        const px = Math.floor((xf - tx) * 256), py = Math.floor((yf - ty) * 256)
+        const url = `/api/landcover/tile/${z}/${tx}/${ty}.png`
+        const img = new Image()
+        await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url })
+        const cv = document.createElement('canvas')
+        cv.width = 256; cv.height = 256
+        cv.getContext('2d').drawImage(img, 0, 0)
+        const [r, g, b, a] = cv.getContext('2d').getImageData(px, py, 1, 1).data
+        // Tree Cover = RGB(0,100,0) with alpha > 0
+        this.forestWarn = a < 10 || !(Math.abs(r-0) + Math.abs(g-100) + Math.abs(b-0) <= 60)
+      } catch { this.forestWarn = false }
     },
 
     // ── Area draw mode ─────────────────────────────────────────────────────

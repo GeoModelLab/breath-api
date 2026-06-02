@@ -1,6 +1,6 @@
 # BREATH
 
-**Biologically Realistic Ecosystem and Atmosphere Transpiration and Humidity** — a process-based framework for simulating hourly carbon fluxes (GPP, RECO, NEE) and phenology dynamics in temperate deciduous forests.
+A process-based framework for simulating hourly carbon fluxes (GPP, RECO, NEE) and phenology dynamics in temperate deciduous forests.
 
 BREATH builds on the conceptual structure of the Vegetation Photosynthesis and Respiration Model (VPRM; Mahadevan et al. 2008) but departs substantially from it. It implements a two-layer canopy (overstory + understory), Lloyd-Taylor temperature-sensitive respiration, the SWELL phenology sub-model (Bajocco et al. 2025) for EVI trajectory reconstruction, phenological regulation of carbon fluxes through light-use efficiency and respiration scalars (ϕphoto, ϕresp), a two-pool labile carbon substrate that couples autotrophic respiration to antecedent photosynthetic activity, and an optional circadian activation function (Cact) that introduces endogenous biological rhythms into both photosynthesis and respiration.
 
@@ -10,7 +10,7 @@ Live demo: **https://breath-api-thkm.onrender.com**
 
 | Format | Link |
 |--------|------|
-| Python notebook | [nbviewer ↗](https://nbviewer.org/urls/raw.githubusercontent.com/GeoModelLab/breath-api/main/examples/breath_api_demo.ipynb) · [raw source](https://github.com/GeoModelLab/breath-api/blob/main/examples/breath_api_demo.ipynb) |
+| Python notebook | [View on GitHub ↗](https://github.com/GeoModelLab/breath-api/blob/main/examples/breath_api_demo.ipynb) |
 | R vignette | [View rendered HTML ↗](https://breath-api-thkm.onrender.com/docs/breath_api_demo.html) · [source Rmd](https://github.com/GeoModelLab/breath-api/blob/main/examples/breath_api_demo.Rmd) |
 
 ---
@@ -127,7 +127,7 @@ Results appear as interactive charts with KPIs directly in the browser.
 |--------|--------|
 | **Click** on forest pixel | Select single point |
 | **⬚ Area** drag | Draw a multi-pixel grid (up to 25 pixels) |
-| **Forest mask** toggle | Show/hide ESA WorldCover 2021 forest layer |
+| **Forest mask** toggle | Show/hide ESA WorldCover 2021 land-cover layer |
 | Click land-cover legend row | Spotlight that land-cover class on the map |
 
 ### Single-point simulation

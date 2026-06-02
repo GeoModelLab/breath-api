@@ -48,7 +48,7 @@ window.HelpPanel = defineComponent({
                 <span class="step-num">1</span>
                 <div>
                   <b>Click on the map</b> to select a deciduous forest pixel.<br>
-                  <span class="step-note">The ESA WorldCover overlay highlights forest cover (class 10, dark green).</span>
+                  <span class="step-note">The ESA WorldCover overlay highlights land cover classes — target Tree Cover (class 10, dark green).</span>
                 </div>
               </div>
               <div class="help-step">
@@ -86,21 +86,21 @@ window.HelpPanel = defineComponent({
 
           <!-- ── Map ── -->
           <template v-if="tab==='map'">
-            <p class="help-p">The map overlay uses <b>ESA WorldCover 2021</b> (10 m global land cover). BREATH is calibrated for <b>deciduous broadleaf forests (class 10, dark green)</b>.</p>
+            <p class="help-p">The map overlay uses <b>ESA WorldCover 2021</b> (10 m resolution). BREATH is calibrated for deciduous broadleaf forests; select pixels classified as <b>Tree Cover (class 10, dark green)</b> for best results.</p>
             <div class="help-kv">
               <span class="help-k">Single click</span>
               <span class="help-v">Select one pixel for simulation. A marker and lat/lon coordinates appear.</span>
               <span class="help-k">⬚ Area</span>
               <span class="help-v">Click and drag to draw a bounding box. BREATH runs on a regular grid (up to 25 pixels). Results shown as circles scaled by NEE magnitude.</span>
               <span class="help-k">Forest mask</span>
-              <span class="help-v">Toggle the WorldCover overlay on/off.</span>
+              <span class="help-v">Toggle the ESA WorldCover 2021 overlay on/off.</span>
               <span class="help-k">▤ Legend</span>
-              <span class="help-v">Shows all 7 land-cover classes. Click a class to highlight it on the map (dims everything else).</span>
+              <span class="help-v">Shows ESA WorldCover land-cover classes. Click a class to highlight it on the map (dims everything else).</span>
               <span class="help-k">ESC</span>
               <span class="help-v">Cancel area draw mode.</span>
             </div>
             <div class="help-tip">
-              ⚠️ The orange banner <i>"Point may not be in dense tree cover"</i> appears when the selected pixel is not classified as forest (class 10). The model will still run, but results may not be representative.
+              ⚠️ The orange banner <i>"Point may not be in Tree Cover"</i> appears when the selected pixel is not classified as Tree Cover (ESA WorldCover class 10). The model will still run, but results may not be representative.
             </div>
           </template>
 
@@ -231,7 +231,7 @@ df  = pd.read_csv(io.StringIO(csv), parse_dates=["date"])</pre>
 
             <div class="help-tip" style="margin-top:8px">
               📓 Full examples (single pixel, grid, parameter overrides):<br>
-              <a href="https://nbviewer.org/urls/raw.githubusercontent.com/GeoModelLab/breath-api/main/examples/breath_api_demo.ipynb" target="_blank" style="color:#3b82f6">Python notebook (nbviewer) ↗</a>
+              <a href="https://github.com/GeoModelLab/breath-api/blob/main/examples/breath_api_demo.ipynb" target="_blank" style="color:#3b82f6">Python notebook (GitHub) ↗</a>
               &nbsp;·&nbsp;
               <a href="/docs/breath_api_demo.html" target="_blank" style="color:#3b82f6">R vignette (HTML) ↗</a>
             </div>
@@ -258,7 +258,7 @@ df  = pd.read_csv(io.StringIO(csv), parse_dates=["date"])</pre>
               <span class="help-k">Satellite VI</span>
               <span class="help-v"><a href="https://modis.gsfc.nasa.gov/" target="_blank" style="color:#3b82f6">MODIS Terra/Aqua EVI</a> — 16-day composites from ORNL DAAC.</span>
               <span class="help-k">Land cover</span>
-              <span class="help-v"><a href="https://esa-worldcover.org/" target="_blank" style="color:#3b82f6">ESA WorldCover 2021</a> — 10 m global map, 11 classes.</span>
+              <span class="help-v"><a href="https://esa-worldcover.org/" target="_blank" style="color:#3b82f6">ESA WorldCover 2021</a> — 10 m resolution, served from AWS S3 COG tiles.</span>
               <span class="help-k">Calibration</span>
               <span class="help-v">Multi-start Nelder-Mead Simplex (3 restarts, 200 iterations per run). Evaluated across 43 eddy-covariance sites (FLUXNET/ICOS/AmeriFlux/JapanFlux).</span>
             </div>
