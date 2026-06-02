@@ -975,6 +975,7 @@ window.ResultsPanel = defineComponent({
       for (const c of [this._swellChart, this._fluxChart]) {
         if (!c || c === source) continue
         if (typeof c.zoomScale === 'function') {
+          // zoomScale internally calls chart.update() — do not call update again
           c.zoomScale('x', { min, max }, 'none')
         } else {
           c.options.scales.x.min = min
@@ -1339,12 +1340,12 @@ window.ResultsPanel = defineComponent({
       this._rebuilding = true
       this._swellChart?.destroy(); this._swellChart = null
       this._fluxChart?.destroy();  this._fluxChart  = null
-      nextTick(() => {
+      nextTick(() => requestAnimationFrame(() => {
         this.buildSwellChart()
         this.buildFluxChart()
         if (this.show3D) this.build3D()
         this._rebuilding = false
-      })
+      }))
     },
 
     loadCsv(csv) {
@@ -1412,10 +1413,10 @@ window.ResultsPanel = defineComponent({
       this.healthStats = this._computeHealth(rows, [...colSet])
       this._swellChart?.destroy(); this._swellChart = null
       this._fluxChart?.destroy();  this._fluxChart  = null
-      nextTick(() => {
+      nextTick(() => requestAnimationFrame(() => {
         this.buildSwellChart()
         this.buildFluxChart()
-      })
+      }))
     },
   },
 })
