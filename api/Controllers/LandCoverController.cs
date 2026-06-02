@@ -31,14 +31,63 @@ public class LandCoverController : ControllerBase
     // COG header cache: S3 url → parsed IFD list
     private static readonly ConcurrentDictionary<string, CogMeta?> _cogCache = new();
 
+    // Disk tile cache directory (set once at first request)
+    private static string? _cacheDir;
+    private static string CacheDir
+    {
+        get
+        {
+            if (_cacheDir != null) return _cacheDir;
+            // Prefer /tmp (Render ephemeral FS) over wwwroot to avoid git conflicts
+            var dir = Path.Combine(Path.GetTempPath(), "lc-tiles");
+            Directory.CreateDirectory(dir);
+            return _cacheDir = dir;
+        }
+    }
+
+    // Deduplicate concurrent renders for the same tile
+    private static readonly ConcurrentDictionary<string, Task<byte[]>> _inflight = new();
+
     // ── Public endpoints ─────────────────────────────────────────────────────
 
     [HttpGet("tile/{z}/{x}/{y}.png")]
-    [ResponseCache(Duration = 86400 * 7, Location = ResponseCacheLocation.Any)]
     public async Task<IActionResult> Tile(int z, int x, int y)
     {
-        try   { return File(await RenderTile(z, x, y), "image/png"); }
-        catch { return File(_empty, "image/png"); }
+        // Only cache zoom levels that are worth keeping (overview levels)
+        string key  = $"{z}/{x}/{y}";
+        string path = Path.Combine(CacheDir, z.ToString(), x.ToString(), $"{y}.png");
+
+        // Serve from disk cache if available
+        if (System.IO.File.Exists(path))
+        {
+            Response.Headers["Cache-Control"] = "public, max-age=604800";
+            return File(System.IO.File.ReadAllBytes(path), "image/png");
+        }
+
+        // Deduplicate concurrent requests for the same tile
+        var task = _inflight.GetOrAdd(key, _ => RenderAndCache(path, z, x, y));
+        byte[] png;
+        try   { png = await task; }
+        catch { png = _empty; }
+        finally { _inflight.TryRemove(key, out _); }
+
+        Response.Headers["Cache-Control"] = "public, max-age=604800";
+        return File(png, "image/png");
+    }
+
+    private async Task<byte[]> RenderAndCache(string path, int z, int x, int y)
+    {
+        byte[] png;
+        try   { png = await RenderTile(z, x, y); }
+        catch { return _empty; }
+
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            await System.IO.File.WriteAllBytesAsync(path, png);
+        }
+        catch { /* cache write failure is non-fatal */ }
+        return png;
     }
 
     /// <summary>
