@@ -1413,10 +1413,11 @@ window.ResultsPanel = defineComponent({
       this.healthStats = this._computeHealth(rows, [...colSet])
       this._swellChart?.destroy(); this._swellChart = null
       this._fluxChart?.destroy();  this._fluxChart  = null
-      nextTick(() => requestAnimationFrame(() => {
+      // Two rAFs: first removes display:none (results-col), second has real canvas dimensions
+      nextTick(() => requestAnimationFrame(() => requestAnimationFrame(() => {
         this.buildSwellChart()
         this.buildFluxChart()
-      }))
+      })))
     },
   },
 })

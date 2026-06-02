@@ -5,8 +5,6 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
-builder.Services.AddResponseCaching();
-builder.Services.AddHttpClient();
 
 builder.Services.AddCors(options =>
 {
@@ -37,7 +35,6 @@ outputSvc.EnsureDirectories();
 Console.WriteLine($"WebRoot: {app.Environment.WebRootPath}");
 
 app.UseStaticFiles();
-app.UseResponseCaching();
 app.UseCors("AllowAll");
 // UseHttpsRedirection disabled for local dev (avoids SSL certificate issues)
 app.UseAuthorization();
