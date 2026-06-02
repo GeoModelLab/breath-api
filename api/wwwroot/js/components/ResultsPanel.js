@@ -1340,12 +1340,12 @@ window.ResultsPanel = defineComponent({
       this._rebuilding = true
       this._swellChart?.destroy(); this._swellChart = null
       this._fluxChart?.destroy();  this._fluxChart  = null
-      nextTick(() => {
+      nextTick(() => requestAnimationFrame(() => {
         this.buildSwellChart()
         this.buildFluxChart()
         if (this.show3D) this.build3D()
         this._rebuilding = false
-      })
+      }))
     },
 
     loadCsv(csv) {
@@ -1413,10 +1413,10 @@ window.ResultsPanel = defineComponent({
       this.healthStats = this._computeHealth(rows, [...colSet])
       this._swellChart?.destroy(); this._swellChart = null
       this._fluxChart?.destroy();  this._fluxChart  = null
-      nextTick(() => {
+      nextTick(() => requestAnimationFrame(() => {
         this.buildSwellChart()
         this.buildFluxChart()
-      })
+      }))
     },
   },
 })
