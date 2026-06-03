@@ -58,7 +58,7 @@ createApp({
         <!-- Map column (full height, no log strip) -->
         <div class="map-col">
           <MapPanel ref="mapPanel" @point-selected="onPoint" @area-selected="onAreaSelected"
-                    @history-point-selected="onHistoryPoint" />
+                    @history-point-selected="onHistoryPoint" @forest-warn="onForestWarn" />
         </div>
 
         <!-- Side column: controls (v-show keeps lat/lon state for re-run) -->
@@ -70,6 +70,7 @@ createApp({
             :started-at="startedAt"
             :finished-at="finishedAt"
             :selected-pixels="selectedPixels"
+            :forest-warn="forestWarn"
             @run="onRun"
           />
           <LogPanel ref="log" style="display:none" />
@@ -137,6 +138,7 @@ createApp({
       lastCsvText:    null,
       helpOpen:       !localStorage.getItem('breath_help_seen'),
       selectedPixels: [],
+      forestWarn:     false,
       _logLines:      [],     // shared log state for topbar strip
       _sse:           null,
       _poll:          null,
@@ -177,6 +179,11 @@ createApp({
     onAreaSelected(pixels) {
       this.selectedPixels = pixels
       this.point = null
+      this.forestWarn = false   // area selections don't have a single-pixel forest check
+    },
+
+    onForestWarn(warn) {
+      this.forestWarn = warn
     },
 
     onHistoryPoint({ lat, lon }) {
