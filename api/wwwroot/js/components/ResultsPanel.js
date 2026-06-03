@@ -1225,6 +1225,7 @@ window.ResultsPanel = defineComponent({
               }},
             },
             ...this._zoomPlugin(),
+            annotation: { annotations: {} },
           },
           scales: {
             x:     this._xAxis(),
@@ -1236,6 +1237,7 @@ window.ResultsPanel = defineComponent({
           },
         },
       })
+      this._applyAnnotationsToChart(this._fluxChart)
     },
 
     buildClimoChart() {
@@ -1301,7 +1303,6 @@ window.ResultsPanel = defineComponent({
           },
         },
       })
-      this._applyAnnotationsToChart(this._fluxChart)
     },
 
     _computeHealth(rows, cols) {
@@ -1345,6 +1346,9 @@ window.ResultsPanel = defineComponent({
         this.buildFluxChart()
         if (this.show3D) this.build3D()
         this._rebuilding = false
+        // Re-sync zoom: if one chart has a zoomed range, apply it to the other
+        const src = this._swellChart || this._fluxChart
+        if (src?.scales?.x) this._syncZoom(src)
       }))
     },
 
@@ -1401,15 +1405,16 @@ window.ResultsPanel = defineComponent({
       if (!avail.has(this.var3D)) {
         this.var3D = this.numericCols.find(c => IS_FLUX(c)) ?? this.numericCols[0] ?? 'GPP'
       }
-      // Suppress watcher cascade while resetting state
+      // Suppress watcher cascade: keep _settingFromLoad=true until AFTER charts are built.
+      // Vue flushes watchers (aggMode/dateFrom/dateTo) as microtasks AFTER _settingFromLoad
+      // is reset — if reset happens synchronously they trigger rebuild() and destroy the charts.
       this._settingFromLoad = true
       this.show3D   = false
       this.aggMode  = 'daily'
       this.dateFrom = ''
       this.dateTo   = ''
-      this._settingFromLoad = false
+      // Do NOT reset _settingFromLoad here — reset it inside the rAF after charts are built
       this._rebuilding = false
-      // Destroy old charts immediately, build fresh after DOM update
       this.healthStats = this._computeHealth(rows, [...colSet])
       this._swellChart?.destroy(); this._swellChart = null
       this._fluxChart?.destroy();  this._fluxChart  = null
@@ -1417,6 +1422,7 @@ window.ResultsPanel = defineComponent({
       nextTick(() => requestAnimationFrame(() => requestAnimationFrame(() => {
         this.buildSwellChart()
         this.buildFluxChart()
+        this._settingFromLoad = false   // now allow user interactions to trigger rebuilds
       })))
     },
   },

@@ -176,7 +176,8 @@ window.MapPanel = defineComponent({
 
     this.forestLayer = L.tileLayer(LC_TILE, {
       opacity: 0.65, attribution: FOREST_ATTR,
-      maxNativeZoom: 13, maxZoom: 19,
+      maxNativeZoom: 10, maxZoom: 19,  // tiles capped at z=10; Leaflet upscales for 11+
+      keepBuffer: 4,
     })
     this.forestLayer.addTo(this.map)
 
