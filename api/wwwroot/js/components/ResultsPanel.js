@@ -998,10 +998,10 @@ window.ResultsPanel = defineComponent({
     // Called once per chart build. Converts date-based pheno annotations to
     // numeric-index annotations with a display() function so they self-filter
     // on every zoom/pan render without needing an extra chart.update() call.
-    _applyAnnotationsToChart(c) {
-      if (!this._hasAnnotation || !c?.options?.plugins?.annotation) return
+    // Returns a mapped annotations object keyed by date-index (for passing into Chart options directly).
+    _buildAnnotations(labels) {
+      if (!this._hasAnnotation) return {}
       const allAnnotations = this._phenoAnnotations()
-      const labels = c.data?.labels ?? []
       const dateIdx = new Map()
       labels.forEach((l, i) => {
         const d = (typeof l === 'string' ? l : '').slice(0, 10)
@@ -1016,7 +1016,6 @@ window.ResultsPanel = defineComponent({
         if (ann.xMin   != null) a.xMin   = idx
         if (ann.xMax   != null) a.xMax   = idx
         if (ann.xValue != null) a.xValue = idx
-        // Hide when out of the visible range — avoids clamping to chart edge
         a.display = (ctx) => {
           const s = ctx.chart.scales?.x
           if (!s) return true
@@ -1024,7 +1023,14 @@ window.ResultsPanel = defineComponent({
         }
         mapped[key] = a
       }
-      c.options.plugins.annotation.annotations = mapped
+      return mapped
+    },
+
+    // Legacy alias used by _patchChart path — updates annotations on an already-built chart.
+    _applyAnnotationsToChart(c) {
+      if (!this._hasAnnotation || !c?.options?.plugins?.annotation) return
+      const labels = c.data?.labels ?? []
+      c.options.plugins.annotation.annotations = this._buildAnnotations(labels)
       c.update('none')
     },
 
@@ -1179,7 +1185,7 @@ window.ResultsPanel = defineComponent({
               }},
             },
             ...this._zoomPlugin(),
-            annotation: { annotations: {} },
+            annotation: { annotations: this._buildAnnotations(labels) },
           },
           scales: {
             x:      this._xAxis(),
@@ -1196,7 +1202,6 @@ window.ResultsPanel = defineComponent({
           },
         },
       })
-      this._applyAnnotationsToChart(this._swellChart)
     },
 
     buildFluxChart() {
@@ -1225,7 +1230,7 @@ window.ResultsPanel = defineComponent({
               }},
             },
             ...this._zoomPlugin(),
-            annotation: { annotations: {} },
+            annotation: { annotations: this._buildAnnotations(labels) },
           },
           scales: {
             x:     this._xAxis(),
@@ -1237,7 +1242,6 @@ window.ResultsPanel = defineComponent({
           },
         },
       })
-      this._applyAnnotationsToChart(this._fluxChart)
     },
 
     buildClimoChart() {

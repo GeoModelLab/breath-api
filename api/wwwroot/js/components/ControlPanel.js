@@ -16,6 +16,7 @@ window.ControlPanel = defineComponent({
     finishedAt:     { type: String,   default: null },
     selectedPixels: { type: Array,    default: () => [] },
     forestWarn:     { type: Boolean,  default: false },
+    forestChecking: { type: Boolean,  default: false },
   },
   emits: ['run'],
   template: `
@@ -91,7 +92,8 @@ window.ControlPanel = defineComponent({
 
       <button class="btn-primary btn-full" :disabled="!canRun" @click="emit"
               :title="forestWarn ? 'Selected point is not Tree Cover — simulation disabled' : ''">
-        {{ running ? '⏳  Running…' : forestWarn ? '⚠  Not Tree Cover'
+        {{ running ? '⏳  Running…' : forestChecking ? '⏳  Checking…'
+             : forestWarn ? '⚠  Not Tree Cover'
              : selectedPixels.length > 1 ? '▶  Run ' + selectedPixels.length + ' pixels'
              : '▶  Run BREATH' }}
       </button>
@@ -136,7 +138,7 @@ window.ControlPanel = defineComponent({
 
   computed: {
     running()   { return this.status === 'Running' },
-    canRun()    { return (this.lat != null || this.selectedPixels.length > 0) && !this.running && !this.forestWarn },
+    canRun()    { return (this.lat != null || this.selectedPixels.length > 0) && !this.running && !this.forestWarn && !this.forestChecking },
     badgeClass() {
       return { Idle:'badge badge-idle', Running:'badge badge-running',
                Completed:'badge badge-done', Failed:'badge badge-error' }[this.status] ?? 'badge badge-idle'
@@ -163,6 +165,7 @@ window.ControlPanel = defineComponent({
 
   methods: {
     emit() {
+      if (!this.canRun) return
       const pixel = this.lat != null ? `${this.lat}_${this.lon}` : null
       this.$emit('run', {
         settings: {
