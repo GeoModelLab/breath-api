@@ -10,11 +10,12 @@ const VARIANTS = [
 window.ControlPanel = defineComponent({
   name: 'ControlPanel',
   props: {
-    point:          { type: Object, default: null },
-    status:         { type: String, default: 'Idle' },
-    startedAt:      { type: String, default: null },
-    finishedAt:     { type: String, default: null },
-    selectedPixels: { type: Array,  default: () => [] },
+    point:          { type: Object,   default: null },
+    status:         { type: String,   default: 'Idle' },
+    startedAt:      { type: String,   default: null },
+    finishedAt:     { type: String,   default: null },
+    selectedPixels: { type: Array,    default: () => [] },
+    forestWarn:     { type: Boolean,  default: false },
   },
   emits: ['run'],
   template: `
@@ -88,9 +89,10 @@ window.ControlPanel = defineComponent({
 
       <hr class="divider" />
 
-      <button class="btn-primary btn-full" :disabled="!canRun" @click="emit">
-        {{ running ? '⏳  Running…' : selectedPixels.length > 1
-             ? '▶  Run ' + selectedPixels.length + ' pixels'
+      <button class="btn-primary btn-full" :disabled="!canRun" @click="emit"
+              :title="forestWarn ? 'Selected point is not Tree Cover — simulation disabled' : ''">
+        {{ running ? '⏳  Running…' : forestWarn ? '⚠  Not Tree Cover'
+             : selectedPixels.length > 1 ? '▶  Run ' + selectedPixels.length + ' pixels'
              : '▶  Run BREATH' }}
       </button>
 
@@ -134,7 +136,7 @@ window.ControlPanel = defineComponent({
 
   computed: {
     running()   { return this.status === 'Running' },
-    canRun()    { return (this.lat != null || this.selectedPixels.length > 0) && !this.running },
+    canRun()    { return (this.lat != null || this.selectedPixels.length > 0) && !this.running && !this.forestWarn },
     badgeClass() {
       return { Idle:'badge badge-idle', Running:'badge badge-running',
                Completed:'badge badge-done', Failed:'badge badge-error' }[this.status] ?? 'badge badge-idle'

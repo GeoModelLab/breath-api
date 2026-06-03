@@ -76,7 +76,7 @@ function recoColor() { return '#f87171' }
 
 window.MapPanel = defineComponent({
   name: 'MapPanel',
-  emits: ['point-selected', 'area-selected', 'history-point-selected'],
+  emits: ['point-selected', 'area-selected', 'history-point-selected', 'forest-warn'],
   template: `
     <div class="map-area">
       <div id="leaflet-map"></div>
@@ -252,6 +252,7 @@ window.MapPanel = defineComponent({
       const { lat, lng: lon } = e.latlng
       this.coord = `${lat.toFixed(4)}°N  ${lon.toFixed(4)}°E`
       this.forestWarn = false
+      this.$emit('forest-warn', false)
       this.gridMarkers.forEach(m => this.map.removeLayer(m))
       this.gridMarkers = []; this.gridPixels = []
 
@@ -314,6 +315,7 @@ window.MapPanel = defineComponent({
         // Tree Cover = RGB(0,100,0) with alpha > 0
         this.forestWarn = a < 10 || !(Math.abs(r-0) + Math.abs(g-100) + Math.abs(b-0) <= 60)
       } catch { this.forestWarn = false }
+      this.$emit('forest-warn', this.forestWarn)
     },
 
     // ── Area draw mode ─────────────────────────────────────────────────────
