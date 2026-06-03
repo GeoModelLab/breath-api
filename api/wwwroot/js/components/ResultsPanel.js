@@ -1225,6 +1225,7 @@ window.ResultsPanel = defineComponent({
               }},
             },
             ...this._zoomPlugin(),
+            annotation: { annotations: {} },
           },
           scales: {
             x:     this._xAxis(),
@@ -1236,6 +1237,7 @@ window.ResultsPanel = defineComponent({
           },
         },
       })
+      this._applyAnnotationsToChart(this._fluxChart)
     },
 
     buildClimoChart() {
@@ -1301,7 +1303,6 @@ window.ResultsPanel = defineComponent({
           },
         },
       })
-      this._applyAnnotationsToChart(this._fluxChart)
     },
 
     _computeHealth(rows, cols) {
@@ -1345,6 +1346,9 @@ window.ResultsPanel = defineComponent({
         this.buildFluxChart()
         if (this.show3D) this.build3D()
         this._rebuilding = false
+        // Re-sync zoom: if one chart has a zoomed range, apply it to the other
+        const src = this._swellChart || this._fluxChart
+        if (src?.scales?.x) this._syncZoom(src)
       }))
     },
 
