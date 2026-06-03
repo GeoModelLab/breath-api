@@ -1401,15 +1401,16 @@ window.ResultsPanel = defineComponent({
       if (!avail.has(this.var3D)) {
         this.var3D = this.numericCols.find(c => IS_FLUX(c)) ?? this.numericCols[0] ?? 'GPP'
       }
-      // Suppress watcher cascade while resetting state
+      // Suppress watcher cascade: keep _settingFromLoad=true until AFTER charts are built.
+      // Vue flushes watchers (aggMode/dateFrom/dateTo) as microtasks AFTER _settingFromLoad
+      // is reset — if reset happens synchronously they trigger rebuild() and destroy the charts.
       this._settingFromLoad = true
       this.show3D   = false
       this.aggMode  = 'daily'
       this.dateFrom = ''
       this.dateTo   = ''
-      this._settingFromLoad = false
+      // Do NOT reset _settingFromLoad here — reset it inside the rAF after charts are built
       this._rebuilding = false
-      // Destroy old charts immediately, build fresh after DOM update
       this.healthStats = this._computeHealth(rows, [...colSet])
       this._swellChart?.destroy(); this._swellChart = null
       this._fluxChart?.destroy();  this._fluxChart  = null
@@ -1417,6 +1418,7 @@ window.ResultsPanel = defineComponent({
       nextTick(() => requestAnimationFrame(() => requestAnimationFrame(() => {
         this.buildSwellChart()
         this.buildFluxChart()
+        this._settingFromLoad = false   // now allow user interactions to trigger rebuilds
       })))
     },
   },
