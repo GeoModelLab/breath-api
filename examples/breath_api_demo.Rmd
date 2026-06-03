@@ -52,10 +52,10 @@ BASE_URL <- "https://breath-api-thkm.onrender.com"
 ## 1 · Submit a simulation
 
 A pixel is identified by `"lat_lon"` (4 decimal places).
-We simulate a deciduous broadleaf forest in the northern Apennines (Italy).
+We simulate a deciduous broadleaf forest in the Po Valley foothills, northern Italy (44.6813°N, 11.0217°E).
 
 ```{r submit}
-pixel    <- "44.1234_10.7654"
+pixel    <- "44.6813_11.0217"
 start_yr <- 2022L
 end_yr   <- 2024L
 
@@ -226,7 +226,7 @@ seasons <- df |>
   group_by(year, season) |>
   summarise(
     T_mean   = round(mean(t,    na.rm = TRUE), 1),
-    P_total  = round(sum(p,     na.rm = TRUE) * 24, 0),  # mm/h → mm/day, summed
+    P_total  = round(sum(p,     na.rm = TRUE), 0),  # p in mm h⁻¹; sum over hours = mm total
     GPP_mean = round(mean(GPP,  na.rm = TRUE), 3),
     NEE_mean = round(mean(NEE,  na.rm = TRUE), 3),
     .groups = "drop"
