@@ -178,68 +178,68 @@ public class LandCoverController : ControllerBase
         if (ifd == null) return;
 
         double cogN = cogLat + 3.0, cogE = cogLon + 3.0;
-        double pxW = (cogE - cogLon) / ifd.Width;
+        double pxW = (cogE - cogLon) / ifd.Width;   // degrees per source pixel
         double pxH = (cogN - cogLat) / ifd.Height;
 
-        int srcX0 = (int)Math.Floor(Math.Max(tileW - cogLon, 0) / pxW);
-        int srcX1 = (int)Math.Ceiling(Math.Min(tileE - cogLon, cogE - cogLon) / pxW);
-        int srcY0 = (int)Math.Floor(Math.Max(cogN - tileN, 0) / pxH);
-        int srcY1 = (int)Math.Ceiling(Math.Min(cogN - tileS, cogN - cogLat) / pxH);
-
-        srcX0 = Math.Clamp(srcX0, 0, ifd.Width  - 1);
-        srcX1 = Math.Clamp(srcX1, 0, ifd.Width);
-        srcY0 = Math.Clamp(srcY0, 0, ifd.Height - 1);
-        srcY1 = Math.Clamp(srcY1, 0, ifd.Height);
+        // Source pixel region needed for this map tile
+        int srcX0 = Math.Max(0, (int)Math.Floor(Math.Max(tileW - cogLon, 0) / pxW));
+        int srcX1 = Math.Min(ifd.Width,  (int)Math.Ceiling(Math.Min(tileE - cogLon, cogE - cogLon) / pxW));
+        int srcY0 = Math.Max(0, (int)Math.Floor(Math.Max(cogN - tileN, 0) / pxH));
+        int srcY1 = Math.Min(ifd.Height, (int)Math.Ceiling(Math.Min(cogN - tileS, cogN - cogLat) / pxH));
         if (srcX1 <= srcX0 || srcY1 <= srcY0) return;
 
-        int tileColMin = srcX0 / ifd.TileW, tileColMax = (srcX1 - 1) / ifd.TileW;
-        int tileRowMin = srcY0 / ifd.TileH, tileRowMax = (srcY1 - 1) / ifd.TileH;
+        // Fetch all COG tiles that cover the source region
+        int tcMin = srcX0 / ifd.TileW, tcMax = (srcX1 - 1) / ifd.TileW;
+        int trMin = srcY0 / ifd.TileH, trMax = (srcY1 - 1) / ifd.TileH;
 
         var fetchTasks = new List<Task<(int tr, int tc, byte[]? pixels)>>();
-        for (int tr = tileRowMin; tr <= tileRowMax; tr++)
-        for (int tc = tileColMin; tc <= tileColMax; tc++)
+        for (int tr = trMin; tr <= trMax; tr++)
+        for (int tc = tcMin; tc <= tcMax; tc++)
         {
             int ti = tr * ifd.TilesAcross + tc;
-            if (ti >= ifd.Offsets.Length) continue;
-            long off = ifd.Offsets[ti], cnt = ifd.Counts[ti];
+            if (ti >= ifd.Offsets!.Length) continue;
+            long off = ifd.Offsets[ti], cnt = ifd.Counts![ti];
             if (off == 0 || cnt == 0) continue;
             int trr = tr, tcc = tc;
             fetchTasks.Add(Task.Run(async () => {
-                try {
-                    byte[] raw = await FetchRange(url, off, cnt);
-                    return (trr, tcc, Inflate(raw));
-                } catch { return (trr, tcc, (byte[]?)null); }
+                try   { return (trr, tcc, (byte[]?)Inflate(await FetchRange(url, off, cnt))); }
+                catch { return (trr, tcc, (byte[]?)null); }
             }));
         }
-        var results = await Task.WhenAll(fetchTasks);
+        var fetched = await Task.WhenAll(fetchTasks);
 
+        // Build lookup: (tileRow, tileCol) → decompressed bytes
+        var tileMap = new Dictionary<(int, int), byte[]>();
+        foreach (var (tr, tc, px) in fetched)
+            if (px != null && px.Length >= ifd.TileW * ifd.TileH)
+                tileMap[(tr, tc)] = px;
+
+        // Iterate over output pixels (avoids holes/seams that come from source-first iteration)
         lock (rgba)
         {
-            foreach (var (tr, tc, pixels) in results)
+            for (int oy = 0; oy < 256; oy++)
             {
-                if (pixels == null || pixels.Length < ifd.TileW * ifd.TileH) continue;
-                for (int sy = 0; sy < ifd.TileH; sy++)
+                double lat = tileN - (oy + 0.5) / 256.0 * (tileN - tileS);
+                if (lat < cogLat || lat >= cogN) continue;
+                int absY = (int)((cogN - lat) / pxH);
+                if (absY < 0 || absY >= ifd.Height) continue;
+                int tr = absY / ifd.TileH, sy = absY % ifd.TileH;
+
+                for (int ox = 0; ox < 256; ox++)
                 {
-                    int absY = tr * ifd.TileH + sy;
-                    if (absY < srcY0 || absY >= srcY1) continue;
-                    for (int sx = 0; sx < ifd.TileW; sx++)
-                    {
-                        int absX = tc * ifd.TileW + sx;
-                        if (absX < srcX0 || absX >= srcX1) continue;
+                    double lon = tileW + (ox + 0.5) / 256.0 * (tileE - tileW);
+                    if (lon < cogLon || lon >= cogE) continue;
+                    int absX = (int)((lon - cogLon) / pxW);
+                    if (absX < 0 || absX >= ifd.Width) continue;
+                    int tc = absX / ifd.TileW, sx = absX % ifd.TileW;
 
-                        byte cls = pixels[sy * ifd.TileW + sx];
-                        if (cls == 0) continue;
-                        var (r, g, b, a) = _cm[cls];
-                        if (a == 0) continue;
-
-                        double lon = cogLon + (absX + 0.5) * pxW;
-                        double lat = cogN   - (absY + 0.5) * pxH;
-                        int ox = (int)((lon - tileW) / (tileE - tileW) * 256);
-                        int oy = (int)((tileN - lat)  / (tileN - tileS) * 256);
-                        if (ox < 0 || ox >= 256 || oy < 0 || oy >= 256) continue;
-                        int idx = (oy * 256 + ox) * 4;
-                        rgba[idx] = r; rgba[idx+1] = g; rgba[idx+2] = b; rgba[idx+3] = a;
-                    }
+                    if (!tileMap.TryGetValue((tr, tc), out var pixels)) continue;
+                    byte cls = pixels[sy * ifd.TileW + sx];
+                    if (cls == 0) continue;
+                    var (r, g, b, a) = _cm[cls];
+                    if (a == 0) continue;
+                    int idx = (oy * 256 + ox) * 4;
+                    rgba[idx] = r; rgba[idx+1] = g; rgba[idx+2] = b; rgba[idx+3] = a;
                 }
             }
         }
