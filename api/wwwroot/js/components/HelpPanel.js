@@ -100,7 +100,7 @@ window.HelpPanel = defineComponent({
               <span class="help-v">Cancel area draw mode.</span>
             </div>
             <div class="help-tip">
-              ⚠️ The orange banner <i>"Point may not be in Tree Cover"</i> appears when the selected pixel is not classified as Tree Cover (ESA WorldCover class 10). The model will still run, but results may not be representative.
+              ⚠️ When a selected pixel is not classified as <b>Tree Cover (ESA WorldCover class 10)</b>, the Run button is disabled and a warning is shown. BREATH is calibrated for deciduous broadleaf forests; results outside Tree Cover are not supported.
             </div>
           </template>
 
@@ -111,7 +111,7 @@ window.HelpPanel = defineComponent({
             <div class="help-model-variants">
               <div class="hmv-card hmv-baseline">
                 <div class="hmv-title">Baseline</div>
-                <div class="hmv-desc">EVI is used as an instantaneous driver of carbon flux with no explicit representation of phenological state or circadian regulation. Environmental scalers (T, PAR, VPD, water stress) modulate a two-layer (overstory + understory) GPP. RECO follows Lloyd–Taylor temperature response with water modulation.</div>
+                <div class="hmv-desc">EVI is used as a driver of carbon flux with no explicit representation of phenological state or circadian regulation. Environmental scalers (T, PAR, VPD, water stress) modulate a two-layer (overstory + understory) GPP. RECO follows Lloyd–Taylor temperature response with water modulation.</div>
               </div>
               <div class="hmv-card hmv-pheno">
                 <div class="hmv-title">Pheno</div>
@@ -130,13 +130,36 @@ window.HelpPanel = defineComponent({
               <span class="help-k">Endodormancy</span>
               <span class="help-v">Deep dormancy. Chilling units accumulate between T<sub>lower</sub> and T<sub>upper</sub> (vernalisation).</span>
               <span class="help-k">Ecodormancy</span>
-              <span class="help-v">Chilling satisfied. Heat forcing units accumulate until budburst threshold → spring growth begins.</span>
+              <span class="help-v">Once sufficient chilling units have been accumulated, heat forcing units build up until the budburst threshold is reached → spring growth begins.</span>
               <span class="help-k">Growth</span>
-              <span class="help-v">Rapid leaf expansion. LAI grows from minimum to maximum, photosynthesis scales with phenologyScale.</span>
+              <span class="help-v">Spring. Rapid leaf expansion. EVI rises from minimum to maximum; photosynthesis scales with phenologyScale.</span>
               <span class="help-k">Greendown</span>
-              <span class="help-v">Canopy at peak. Thermal units continue accumulating until senescence is triggered.</span>
+              <span class="help-v">Summer. Canopy at peak. Thermal units continue accumulating until senescence is triggered.</span>
               <span class="help-k">Senescence</span>
-              <span class="help-v">Autumn. LAI declines, SWELL value drops toward 0 as leaves fall.</span>
+              <span class="help-v">Autumn. EVI declines, SWELL value drops toward 0 as leaves fall.</span>
+            </div>
+            <p class="help-p" style="margin-top:12px"><b>Key terms:</b></p>
+            <div class="help-kv" style="font-size:11px">
+              <span class="help-k">EVI</span>
+              <span class="help-v">Enhanced Vegetation Index — satellite-derived canopy greenness index (0–1) used as a proxy for photosynthetic capacity. SWELL simulates EVI internally from phenological state.</span>
+              <span class="help-k">SWELL</span>
+              <span class="help-v">Seasonal Weighted EVI-based Leaf dynamics — the phenology sub-model. Tracks canopy state through six phases (Dormancy induction → Endodormancy → Ecodormancy → Growth → Greendown → Senescence) and outputs a continuous index (0–1) analogous to EVI.</span>
+              <span class="help-k">GPP</span>
+              <span class="help-v">Gross Primary Production — total carbon fixed by photosynthesis (µmol CO₂ m⁻² s⁻¹).</span>
+              <span class="help-k">RECO</span>
+              <span class="help-v">Ecosystem Respiration — CO₂ released by autotrophic (plant) and heterotrophic (soil/microbial) processes (µmol CO₂ m⁻² s⁻¹).</span>
+              <span class="help-k">NEE</span>
+              <span class="help-v">Net Ecosystem Exchange = RECO − GPP. Negative = carbon sink; positive = carbon source (µmol CO₂ m⁻² s⁻¹).</span>
+              <span class="help-k">T<sub>lower</sub>, T<sub>upper</sub></span>
+              <span class="help-v">Temperature bounds for chilling unit accumulation during Endodormancy. Only temperatures between T<sub>lower</sub> and T<sub>upper</sub> contribute to the chilling requirement (vernalisation).</span>
+              <span class="help-k">Chilling units</span>
+              <span class="help-v">Accumulated hours of cold exposure (T<sub>lower</sub> &lt; T &lt; T<sub>upper</sub>) required to complete Endodormancy. Represent the vernalisation requirement of the tree.</span>
+              <span class="help-k">Heat forcing units</span>
+              <span class="help-v">Accumulated degree-days above a base temperature during Ecodormancy. When the heat forcing threshold is reached, budburst occurs and the Growth phase begins.</span>
+              <span class="help-k">phenologyScale</span>
+              <span class="help-v">Internal scalar (0–1) derived from SWELL that modulates the photosynthetic parameters during canopy development and senescence.</span>
+              <span class="help-k">VPRM</span>
+              <span class="help-v">Vegetation Photosynthesis and Respiration Model (Mahadevan et al. 2008) — the flux-estimation framework on which BREATH's Baseline variant is built.</span>
             </div>
           </template>
 
@@ -182,12 +205,12 @@ window.HelpPanel = defineComponent({
               <span class="help-k">Respiration</span>
               <span class="help-v">Basal respiration, Q10 temperature sensitivity, GPP pool allocation, autotrophic / heterotrophic fractions.</span>
               <span class="help-k">Vegetation Index</span>
-              <span class="help-v">NVI growth rates controlling simulated NDVI/EVI dynamics in each phenological phase.</span>
+              <span class="help-v">EVI rates controlling simulated EVI dynamics in each phenological phase.</span>
             </div>
             <div class="help-tip">
               The slider sets the value between the calibration min and max. The numeric box to the right is directly editable. Parameters marked <b>x</b> in the CSV are included in MODIS EVI calibration.
             </div>
-            <p class="help-p" style="margin-top:8px">Enable <b>Calibrate against MODIS EVI</b> in the control panel to automatically fit marked parameters to MODIS Terra/Aqua 16-day EVI composites from ORNL DAAC.</p>
+            <p class="help-p" style="margin-top:8px">Enable <b>Calibrate against MODIS EVI</b> in the control panel to automatically fit marked parameters to MODIS Terra/Aqua 8-day EVI composites from ORNL DAAC.</p>
           </template>
 
           <!-- ── API ── -->
@@ -248,7 +271,7 @@ df  = pd.read_csv(io.StringIO(csv), parse_dates=["date"])</pre>
             </p>
             <div class="help-kv">
               <span class="help-k">Baseline</span>
-              <span class="help-v">EVI used as instantaneous driver of carbon flux. No explicit phenological state or circadian regulation.</span>
+              <span class="help-v">EVI used as driver of carbon flux. No explicit phenological state or circadian regulation.</span>
               <span class="help-k">Pheno</span>
               <span class="help-v">Physiological parameters continuously modulated by SWELL phenological progression (dormancy → growth → canopy maturity → senescence). Autotrophic respiration linked to antecedent assimilation through a two-pool labile carbon substrate model.</span>
               <span class="help-k">Circadian</span>
@@ -256,7 +279,7 @@ df  = pd.read_csv(io.StringIO(csv), parse_dates=["date"])</pre>
               <span class="help-k">Weather</span>
               <span class="help-v"><a href="https://power.larc.nasa.gov/" target="_blank" style="color:#3b82f6">NASA POWER</a> — hourly or daily, global coverage from 1981.</span>
               <span class="help-k">Satellite VI</span>
-              <span class="help-v"><a href="https://modis.gsfc.nasa.gov/" target="_blank" style="color:#3b82f6">MODIS Terra/Aqua EVI</a> — 16-day composites from ORNL DAAC.</span>
+              <span class="help-v"><a href="https://modis.gsfc.nasa.gov/" target="_blank" style="color:#3b82f6">MODIS Terra/Aqua EVI</a> — 8-day composites from ORNL DAAC.</span>
               <span class="help-k">Land cover</span>
               <span class="help-v"><a href="https://esa-worldcover.org/" target="_blank" style="color:#3b82f6">ESA WorldCover 2021</a> — 10 m resolution, served from AWS S3 COG tiles.</span>
               <span class="help-k">Calibration</span>
