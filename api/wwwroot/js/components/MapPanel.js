@@ -1,8 +1,11 @@
 ;(function() {
 const { defineComponent } = Vue
 
-const DARK_TILE    = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-const DARK_ATTR    = '&copy; <a href="https://carto.com/">CartoDB</a> &copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
+// CARTO basemaps require an API key since September 2026 (free for non-commercial use, 5M requests/month);
+// without it the tiles carry an "API KEY REQUIRED" watermark. Attribution to CARTO and OSM must stay visible.
+const CARTO_KEY    = 'cb1_4u2d_1_aa3cf3817306e18e09d3fec6'
+const DARK_TILE    = `https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}`
+const DARK_ATTR    = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
 // ESA WorldCover 2021 — served via our COG proxy
 const LC_TILE    = '/api/landcover/tile/{z}/{x}/{y}.png'
 const FOREST_ATTR = '&copy; <a href="https://esa-worldcover.org/">ESA WorldCover 2021</a>'

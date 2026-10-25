@@ -201,14 +201,14 @@ window.HelpPanel = defineComponent({
               <span class="help-k">Phenology</span>
               <span class="help-v">SWELL phase thresholds: photoperiod limits, chilling requirements, heat forcing, greendown, senescence.</span>
               <span class="help-k">Photosynthesis</span>
-              <span class="help-v">Maximum quantum yield (over/understory), temperature optimum, VPD sensitivity, light saturation, water stress.</span>
+              <span class="help-v">Maximum quantum yield (over/understory), cardinal temperatures, VPD response, light saturation, water stress, circadian modulation (β photo).</span>
               <span class="help-k">Respiration</span>
-              <span class="help-v">Basal respiration, Q10 temperature sensitivity, GPP pool allocation, autotrophic / heterotrophic fractions.</span>
+              <span class="help-v">Reference respiration and Lloyd–Taylor activation energy (E₀), carbon use efficiency, GPP allocation to fast/slow substrate pools, circadian modulation (β resp).</span>
               <span class="help-k">Vegetation Index</span>
               <span class="help-v">EVI rates controlling simulated EVI dynamics in each phenological phase.</span>
             </div>
             <div class="help-tip">
-              The slider sets the value between the calibration min and max. The numeric box to the right is directly editable. Parameters marked <b>x</b> in the CSV are included in MODIS EVI calibration.
+              Default values are those of the BREATH paper: fixed parameters as in its Table 1, calibrated parameters set to the median across sites of the calibration with NASA POWER weather (phenology+circadian configuration). The slider sets the value between the calibration min and max. The numeric box to the right is directly editable. Parameters marked <b>x</b> in the CSV are included in MODIS EVI calibration.
             </div>
             <p class="help-p" style="margin-top:8px">Enable <b>Calibrate against MODIS EVI</b> in the control panel to automatically fit marked parameters to MODIS Terra/Aqua 8-day EVI composites from ORNL DAAC.</p>
           </template>
